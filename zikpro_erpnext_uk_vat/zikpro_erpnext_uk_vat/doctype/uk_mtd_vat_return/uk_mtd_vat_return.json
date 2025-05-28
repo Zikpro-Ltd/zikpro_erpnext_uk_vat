@@ -1,0 +1,169 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-02-16 21:56:17.339860",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "vat_obligations_section",
+  "vrn",
+  "period_start_date",
+  "due_date",
+  "reference_key",
+  "column_break_glcs",
+  "status",
+  "period_end_date",
+  "received_date",
+  "vat_return_section",
+  "sales_vat_due_box1",
+  "eu_acquisition_vat_due_box2",
+  "total_vat_due_box3",
+  "purchase_vat_reclaimed_box4",
+  "net_vat_due_box5",
+  "column_break_xryw",
+  "net_sales_box6",
+  "net_purchases_box7",
+  "net_eu_supplies_box_8",
+  "net_eu_acquisitions_box_9"
+ ],
+ "fields": [
+  {
+   "fieldname": "vat_obligations_section",
+   "fieldtype": "Section Break",
+   "label": "VAT Obligations"
+  },
+  {
+   "fieldname": "vrn",
+   "fieldtype": "Data",
+   "label": "VRN"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Overdue\nFulfilled"
+  },
+  {
+   "fieldname": "period_start_date",
+   "fieldtype": "Date",
+   "label": "Period Start Date"
+  },
+  {
+   "fieldname": "due_date",
+   "fieldtype": "Date",
+   "label": "Due Date"
+  },
+  {
+   "fieldname": "reference_key",
+   "fieldtype": "Data",
+   "label": "Reference Key"
+  },
+  {
+   "fieldname": "column_break_glcs",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "period_end_date",
+   "fieldtype": "Date",
+   "label": "Period End Date"
+  },
+  {
+   "fieldname": "received_date",
+   "fieldtype": "Date",
+   "label": "Received Date"
+  },
+  {
+   "fieldname": "vat_return_section",
+   "fieldtype": "Section Break",
+   "label": "VAT Return"
+  },
+  {
+   "fieldname": "sales_vat_due_box1",
+   "fieldtype": "Data",
+   "label": "Sales VAT Due (Box1)"
+  },
+  {
+   "fieldname": "eu_acquisition_vat_due_box2",
+   "fieldtype": "Data",
+   "label": "EU Acquisition VAT Due (Box2)"
+  },
+  {
+   "fieldname": "total_vat_due_box3",
+   "fieldtype": "Data",
+   "label": "Total VAT Due (Box3)"
+  },
+  {
+   "fieldname": "purchase_vat_reclaimed_box4",
+   "fieldtype": "Data",
+   "label": "Purchase VAT Reclaimed (Box4)"
+  },
+  {
+   "fieldname": "net_vat_due_box5",
+   "fieldtype": "Data",
+   "label": "Net VAT Due (Box5)"
+  },
+  {
+   "fieldname": "column_break_xryw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "net_sales_box6",
+   "fieldtype": "Data",
+   "label": "Net Sales (Box6)"
+  },
+  {
+   "fieldname": "net_purchases_box7",
+   "fieldtype": "Data",
+   "label": "Net Purchases (Box7)"
+  },
+  {
+   "fieldname": "net_eu_supplies_box_8",
+   "fieldtype": "Data",
+   "label": "Net EU Supplies (Box 8)"
+  },
+  {
+   "fieldname": "net_eu_acquisitions_box_9",
+   "fieldtype": "Data",
+   "label": "Net EU Acquisitions (Box 9)"
+  },
+  {
+    "fieldname": "obligation_frequency",
+    "fieldtype": "Select",
+    "label": "Obligation Frequency",
+    "options": "Monthly\nQuarterly\nAll",
+    "default": "All",
+    "insert_after": "vat_obligations_section"
+  },
+  {
+    "fieldname": "fetch_obligations_btn",
+    "fieldtype": "Button",
+    "label": "Fetch Obligations",
+    "depends_on": "eval:doc.docstatus==0",
+    "insert_after": "obligation_frequency"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-02-22 01:45:17.850218",
+ "modified_by": "Administrator",
+ "module": "Zikpro Erpnext Uk Vat",
+ "name": "UK MTD VAT Return",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

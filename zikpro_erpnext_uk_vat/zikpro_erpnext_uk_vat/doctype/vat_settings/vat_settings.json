@@ -1,0 +1,121 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-02-16 21:40:47.342132",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "details_tab",
+  "company",
+  "billing_contact",
+  "payment_method",
+  "column_break_ngqg",
+  "vat_return_report",
+  "oauth_tab",
+  "client_id",
+  "client_secret",
+  "redirect_url",
+  "column_break_vpqk",
+  "access_token",
+  "refresh_token"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_tab",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "oauth_tab",
+   "fieldtype": "Tab Break",
+   "label": "OAuth"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "billing_contact",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Billing Contact",
+   "reqd": 1
+  },
+  {
+   "description": "You will billed per submission",
+   "fieldname": "payment_method",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Payment Method",
+   "options": "Cash\nBank",
+   "reqd": 1
+  },
+  {
+   "fieldname": "vat_return_report",
+   "fieldtype": "Link",
+   "label": "VAT Return Report",
+   "options": "Report"
+  },
+  {
+   "fieldname": "column_break_ngqg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "client_id",
+   "fieldtype": "Data",
+   "label": "Client ID"
+  },
+  {
+   "fieldname": "client_secret",
+   "fieldtype": "Password",
+   "label": "Client Secret"
+  },
+  {
+   "fieldname": "redirect_url",
+   "fieldtype": "Data",
+   "label": "Redirect URL"
+  },
+  {
+   "fieldname": "column_break_vpqk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "access_token",
+   "fieldtype": "Password",
+   "label": "Access Token"
+  },
+  {
+   "fieldname": "refresh_token",
+   "fieldtype": "Password",
+   "label": "Refresh Token"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-05-25 17:32:46.638101",
+ "modified_by": "Administrator",
+ "module": "Zikpro Erpnext Uk Vat",
+ "name": "VAT Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
