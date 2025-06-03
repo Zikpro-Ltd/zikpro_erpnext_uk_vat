@@ -258,7 +258,7 @@ def fetch_all_obligations(frequency, from_date=None, to_date=None):
         if not default_company:
             frappe.throw("No default company set in Global Defaults.")
         
-        vrn = frappe.db.get_value("Company", default_company, "uk_vat_registration_number")
+        vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
         if not vrn:
             frappe.throw(f"VRN not set for company {default_company}.")
         
@@ -457,7 +457,7 @@ def submit_vat_return_to_hmrc(docname):
         if not default_company:
             frappe.throw("No default company set in Global Defaults.")
             
-        vrn = frappe.db.get_value("Company", default_company, "uk_vat_registration_number")
+        vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
         if not vrn:
             frappe.throw(f"VRN not set for company {default_company}.")
 
