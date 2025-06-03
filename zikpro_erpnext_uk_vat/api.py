@@ -4,7 +4,6 @@ import json
 from frappe.utils import now_datetime, add_to_date, nowdate, getdate, formatdate
 from requests.auth import HTTPBasicAuth
 from urllib.parse import quote, urlencode
-from frappe.utils.password import encrypt, get_decrypted_password
 
 # HMRC OAuth 2.0 Configuration
 HMRC_AUTH_URL = "https://test-api.service.hmrc.gov.uk/oauth/authorize"
@@ -36,7 +35,7 @@ def oauth_callback():
 
     doc = frappe.get_doc("VAT Settings", state)
     client_id = doc.client_id
-    client_secret = get_decrypted_password("VAT Settings", doc.name, "client_secret")
+    client_secret = doc.get_password('client_secret')
     redirect_uri = doc.redirect_url
 
     payload = {
@@ -63,9 +62,8 @@ def oauth_callback():
 
             token_expiry = add_to_date(now_datetime(), seconds=expires_in)
 
-            # Use set_password for sensitive fields
-            doc.set_password("access_token", access_token)
-            doc.set_password("refresh_token", refresh_token)
+            doc.access_token = access_token
+            doc.refresh_token = refresh_token
             doc.token_expiry = token_expiry
             doc.status = "Authorized"
             doc.save()
@@ -86,10 +84,10 @@ def make_hmrc_request(method, endpoint, docname, params=None, json_data=None, re
     """
     try:
         doc = frappe.get_doc("VAT Settings", docname)
-        access_token = get_decrypted_password("VAT Settings", doc.name, "access_token")
-        if not access_token:
+        if not doc.access_token:
             return {"error": "Access token not found in VAT Settings", "success": False}
 
+        access_token = doc.get_password("access_token")
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/vnd.hmrc.1.0+json",
@@ -179,12 +177,12 @@ def refresh_access_token(docname):
     """Refresh the access token using the refresh token"""
     try:
         doc = frappe.get_doc("VAT Settings", docname)
-        refresh_token = get_decrypted_password("VAT Settings", doc.name, "refresh_token")
-        if not refresh_token:
+        if not doc.refresh_token:
             return {"success": False, "error": "Refresh token not found. Please re-authorize."}
 
         client_id = doc.client_id
-        client_secret = get_decrypted_password("VAT Settings", doc.name, "client_secret")
+        client_secret = doc.get_password('client_secret')
+        refresh_token = doc.get_password('refresh_token')
 
         if not all([client_id, client_secret, refresh_token]):
             return {"success": False, "error": "Missing required credentials for token refresh"}
@@ -230,10 +228,9 @@ def refresh_access_token(docname):
         if not all(k in token_data for k in ["access_token", "expires_in"]):
             return {"success": False, "error": "Invalid token response format"}
 
-        # Use set_password for sensitive fields
-        doc.set_password("access_token", token_data["access_token"])
+        doc.access_token = token_data["access_token"]
         if "refresh_token" in token_data:
-            doc.set_password("refresh_token", token_data["refresh_token"])
+            doc.refresh_token = token_data["refresh_token"]
         doc.token_expiry = add_to_date(now_datetime(), seconds=token_data["expires_in"])
         doc.save()
         frappe.db.commit()
@@ -269,7 +266,7 @@ def fetch_all_obligations(frequency, from_date=None, to_date=None):
         if not vat_settings:
             frappe.throw("VAT Settings not found for company.")
 
-        if not get_decrypted_password("VAT Settings", vat_settings.name, "access_token"):
+        if not vat_settings.get_password("access_token"):
             frappe.throw("Access token not found. Please authorize with HMRC first.")
         
         from_date = from_date or add_to_date(nowdate(), years=-1)
@@ -468,7 +465,7 @@ def submit_vat_return_to_hmrc(docname):
         if not vat_settings:
             frappe.throw("VAT Settings not found for company.")
         
-        if not get_decrypted_password("VAT Settings", vat_settings.name, "access_token"):
+        if not vat_settings.get_password("access_token"):
             frappe.throw("Access token not found. Please authorize with HMRC first.")
 
         original_doc = doc.as_dict().copy()
