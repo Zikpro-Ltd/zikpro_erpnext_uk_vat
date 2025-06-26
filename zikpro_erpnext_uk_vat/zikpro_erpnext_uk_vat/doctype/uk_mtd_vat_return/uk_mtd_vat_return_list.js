@@ -120,7 +120,7 @@ frappe.ui.form.on('UK MTD VAT Return', {
             if (frm.doc.status === "Overdue") {
                 frm.add_custom_button(__('Submit to HMRC'), function() {
                     frappe.confirm(
-                        __('Are you sure you want to submit this VAT return to HMRC?'),
+                        __('<strong>UK HMRC Legal Declaration</strong><br><br>When you submit this VAT information you are making a legal declaration that the information is true and complete. A false declaration can result in prosecution.<br><br> Would you like to proceed?'),
                         function() {  // Proceed
                             frappe.call({
                                 method: 'zikpro_erpnext_uk_vat.api.submit_vat_return_to_hmrc',

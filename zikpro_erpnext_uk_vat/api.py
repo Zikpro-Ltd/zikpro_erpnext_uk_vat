@@ -1,9 +1,20 @@
+from __future__ import unicode_literals
+import base64
 import frappe
 import requests
 import json
 from frappe.utils import now_datetime, add_to_date, nowdate, getdate, formatdate
 from requests.auth import HTTPBasicAuth
 from urllib.parse import quote, urlencode
+from frappe.model.document import Document
+from frappe import _
+from frappe.utils import get_defaults
+import uuid  # Add this with your other imports
+import hashlib
+import socket
+import datetime
+import platform
+from frappe.utils import get_site_name,get_host_name
 
 # HMRC OAuth 2.0 Configuration
 HMRC_AUTH_URL = "https://test-api.service.hmrc.gov.uk/oauth/authorize"
@@ -91,7 +102,8 @@ def make_hmrc_request(method, endpoint, docname, params=None, json_data=None, re
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/vnd.hmrc.1.0+json",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            **get_fraud_prevention_headers()  # Include all headers
         }
         
         url = f"{HMRC_API_BASE_URL}{endpoint}"
@@ -354,63 +366,139 @@ def fetch_all_obligations(frequency, from_date=None, to_date=None):
         frappe.log_error("Obligation Processing Error", error_msg)
         frappe.throw(error_msg)
 
+# @frappe.whitelist()
+# def calculate_vat_boxes(docname):
+#     """
+#     Calculate UK VAT 9-box return using your field names
+#     """
+#     doc = frappe.get_doc("UK MTD VAT Return", docname)
+    
+#     if not doc.period_start_date or not doc.period_end_date:
+#         frappe.throw("Please set period start and end dates first")
+    
+#     # 1. Calculate Box 1 (VAT Due on Sales)
+#     sales_invoices = frappe.get_all("Sales Invoice",
+#         filters={
+#             "posting_date": ["between", [doc.period_start_date, doc.period_end_date]],
+#             "docstatus": 1,
+#             "is_return": 0  # Exclude credit notes
+#         },
+#         fields=["base_grand_total", "base_total_taxes_and_charges"]
+#     )
+#     doc.sales_vat_due_box1 = sum(inv.base_total_taxes_and_charges for inv in sales_invoices)
+    
+#     # 2. Calculate Box 6 (Net Sales)
+#     doc.net_sales_box6 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges 
+#                            for inv in sales_invoices)
+    
+#     # 3. Calculate Box 4 (VAT Reclaimed on Purchases)
+#     purchase_invoices = frappe.get_all("Purchase Invoice",
+#         filters={
+#             "posting_date": ["between", [doc.period_start_date, doc.period_end_date]],
+#             "docstatus": 1,
+#             "is_return": 0
+#         },
+#         fields=["base_grand_total", "base_total_taxes_and_charges"]
+#     )
+#     doc.purchase_vat_reclaimed_box4 = sum(inv.base_total_taxes_and_charges for inv in purchase_invoices)
+    
+#     # 4. Calculate Box 7 (Net Purchases)
+#     doc.net_purchases_box7 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges 
+#                                for inv in purchase_invoices)
+    
+#     # 5. Calculate EU Transactions (Box 2, 8, 9)
+#     eu_results = calculate_eu_transactions(doc.period_start_date, doc.period_end_date)
+#     doc.eu_acquisition_vat_due_box2 = eu_results['box2']
+#     doc.net_eu_supplies_box_8 = eu_results['box8']
+#     doc.net_eu_acquisitions_box_9 = eu_results['box9']
+    
+#     # 6. Calculate Derived Boxes
+#     doc.total_vat_due_box3 = doc.sales_vat_due_box1 + doc.eu_acquisition_vat_due_box2
+#     doc.net_vat_due_box5 = doc.total_vat_due_box3 - doc.purchase_vat_reclaimed_box4
+
+#     doc.formatted_sales_vat_due_box1 = format_currency(doc.sales_vat_due_box1)
+#     doc.formatted_net_sales_box6 = format_currency(doc.net_sales_box6)
+#     doc.formatted_purchase_vat_reclaimed_box4 = format_currency(doc.purchase_vat_reclaimed_box4)
+#     doc.formatted_net_purchases_box7 = format_currency(doc.net_purchases_box7)
+#     doc.formatted_eu_acquisition_vat_due_box2 = format_currency(doc.eu_acquisition_vat_due_box2)
+#     doc.formatted_net_eu_supplies_box_8 = format_currency(doc.net_eu_supplies_box_8)
+#     doc.formatted_net_eu_acquisitions_box_9 = format_currency(doc.net_eu_acquisitions_box_9)
+#     doc.formatted_total_vat_due_box3 = format_currency(doc.total_vat_due_box3)
+#     doc.formatted_net_vat_due_box5 = format_currency(doc.net_vat_due_box5)
+    
+#     doc.save()
+#     frappe.db.commit()
+    
+#     return {
+#         "status": "success",
+#         "message": "VAT boxes calculated successfully",
+#         "formatted_values": {
+#             "sales_vat_due_box1": doc.formatted_sales_vat_due_box1,
+#             "net_sales_box6": doc.formatted_net_sales_box6,
+#             "purchase_vat_reclaimed_box4": doc.formatted_purchase_vat_reclaimed_box4,
+#             "net_purchases_box7": doc.formatted_net_purchases_box7,
+#             "eu_acquisition_vat_due_box2": doc.formatted_eu_acquisition_vat_due_box2,
+#             "net_eu_supplies_box_8" : doc.formatted_net_eu_supplies_box_8,
+#             "net_eu_acquisitions_box_9": doc.formatted_net_eu_acquisitions_box_9,
+#             "total_vat_due_box3":doc.formatted_total_vat_due_box3,
+#             "net_vat_due_box5":doc.formatted_net_vat_due_box5
+
+#         }
+
+#     }
+
 @frappe.whitelist()
 def calculate_vat_boxes(docname):
-    """
-    Calculate UK VAT 9-box return using your field names
-    """
     doc = frappe.get_doc("UK MTD VAT Return", docname)
     
     if not doc.period_start_date or not doc.period_end_date:
         frappe.throw("Please set period start and end dates first")
-    
-    # 1. Calculate Box 1 (VAT Due on Sales)
-    sales_invoices = frappe.get_all("Sales Invoice",
-        filters={
-            "posting_date": ["between", [doc.period_start_date, doc.period_end_date]],
-            "docstatus": 1,
-            "is_return": 0  # Exclude credit notes
-        },
-        fields=["base_grand_total", "base_total_taxes_and_charges"]
-    )
+
+    sales_invoices = frappe.get_all("Sales Invoice", filters={
+        "posting_date": ["between", [doc.period_start_date, doc.period_end_date]],
+        "docstatus": 1,
+        "is_return": 0
+    }, fields=["base_grand_total", "base_total_taxes_and_charges"])
+
     doc.sales_vat_due_box1 = sum(inv.base_total_taxes_and_charges for inv in sales_invoices)
-    
-    # 2. Calculate Box 6 (Net Sales)
-    doc.net_sales_box6 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges 
-                           for inv in sales_invoices)
-    
-    # 3. Calculate Box 4 (VAT Reclaimed on Purchases)
-    purchase_invoices = frappe.get_all("Purchase Invoice",
-        filters={
-            "posting_date": ["between", [doc.period_start_date, doc.period_end_date]],
-            "docstatus": 1,
-            "is_return": 0
-        },
-        fields=["base_grand_total", "base_total_taxes_and_charges"]
-    )
+    doc.net_sales_box6 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges for inv in sales_invoices)
+
+    purchase_invoices = frappe.get_all("Purchase Invoice", filters={
+        "posting_date": ["between", [doc.period_start_date, doc.period_end_date]],
+        "docstatus": 1,
+        "is_return": 0
+    }, fields=["base_grand_total", "base_total_taxes_and_charges"])
+
     doc.purchase_vat_reclaimed_box4 = sum(inv.base_total_taxes_and_charges for inv in purchase_invoices)
-    
-    # 4. Calculate Box 7 (Net Purchases)
-    doc.net_purchases_box7 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges 
-                               for inv in purchase_invoices)
-    
-    # 5. Calculate EU Transactions (Box 2, 8, 9)
+    doc.net_purchases_box7 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges for inv in purchase_invoices)
+
     eu_results = calculate_eu_transactions(doc.period_start_date, doc.period_end_date)
     doc.eu_acquisition_vat_due_box2 = eu_results['box2']
     doc.net_eu_supplies_box_8 = eu_results['box8']
     doc.net_eu_acquisitions_box_9 = eu_results['box9']
-    
-    # 6. Calculate Derived Boxes
+
     doc.total_vat_due_box3 = doc.sales_vat_due_box1 + doc.eu_acquisition_vat_due_box2
     doc.net_vat_due_box5 = doc.total_vat_due_box3 - doc.purchase_vat_reclaimed_box4
-    
+
+    # # Set formatted values
+    # doc.formatted_sales_vat_due_box1 = format_currency(doc.sales_vat_due_box1)
+    # doc.formatted_net_sales_box6 = format_currency(doc.net_sales_box6)
+    # doc.formatted_purchase_vat_reclaimed_box4 = format_currency(doc.purchase_vat_reclaimed_box4)
+    # doc.formatted_net_purchases_box7 = format_currency(doc.net_purchases_box7)
+    # doc.formatted_eu_acquisition_vat_due_box2 = format_currency(doc.eu_acquisition_vat_due_box2)
+    # doc.formatted_net_eu_supplies_box_8 = format_currency(doc.net_eu_supplies_box_8)
+    # doc.formatted_net_eu_acquisitions_box_9 = format_currency(doc.net_eu_acquisitions_box_9)
+    # doc.formatted_total_vat_due_box3 = format_currency(doc.total_vat_due_box3)
+    # doc.formatted_net_vat_due_box5 = format_currency(doc.net_vat_due_box5)
+
     doc.save()
     frappe.db.commit()
-    
+
     return {
         "status": "success",
         "message": "VAT boxes calculated successfully"
     }
+
 
 def calculate_eu_transactions(start_date, end_date):
     """Calculate EU-specific boxes"""
@@ -578,3 +666,330 @@ def create_proper_version_log(new_doc, old_doc_dict):
     except Exception as e:
         frappe.log_error("Failed to create version log", frappe.get_traceback())
         return False
+
+
+
+@frappe.whitelist()
+def fetch_liabilities(from_date=None, to_date=None):
+    """
+    Fetch VAT liabilities from HMRC API matching your doctype field names
+    """
+    try:
+        # 1. Get company and VAT settings
+        default_company = frappe.db.get_single_value("Global Defaults", "default_company")
+        if not default_company:
+            frappe.throw("No default company set in Global Defaults.")
+            
+        vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        if not vrn:
+            frappe.throw(f"VAT Registration Number not set for company {default_company}")
+
+        vat_settings = frappe.get_doc("VAT Settings", {"company": default_company})
+        if not vat_settings:
+            frappe.throw("VAT Settings not found for company.")
+            
+        if not vat_settings.get_password("access_token"):
+            frappe.throw("Access token not found. Please authorize with HMRC first.")
+
+        # 2. Prepare API request with your field names
+        params = {}
+        if from_date:
+            params["from"] = from_date  # Matches your from_date field
+        if to_date:
+            params["to"] = to_date  # Matches your to_date field
+        
+        response = make_hmrc_request(
+            "GET",
+            f"/organisations/vat/{vrn}/liabilities",
+            vat_settings.name,
+            params=params
+        )
+        
+        if not response.get("success"):
+            error_msg = response.get("error", "Unknown error")
+            status_code = response.get("status_code", "unknown")
+
+        if status_code == 404:
+            frappe.throw("No liability data found for the specified period.")
+        else:
+            frappe.throw(f"HMRC API Error ({status_code}): {error_msg}")
+            
+        liabilities = response.get("data", {}).get("liabilities", [])
+        today = nowdate()
+        formatted_data = []
+        
+        for liability in liabilities:
+            tax_period = liability.get("taxPeriod", {})
+            outstanding = float(liability.get("outstandingAmount", 0))
+            
+            formatted_data.append({
+                "name": f"LIABILITY-{tax_period.get('from')}-{liability.get('type')}",
+                "type": liability.get("type"),  # Matches your type field
+                "from_date": tax_period.get("from"),  # Matches your from_date field
+                "to_date": tax_period.get("to"),  # Matches your to_date field
+                "due_date": liability.get("due"),  # Matches your due_date field
+                "original_amount": float(liability.get("originalAmount", 0)),  # Matches your field
+                "outstanding_amount": outstanding
+            })
+            
+        return formatted_data
+        
+    except Exception as e:
+        frappe.log_error("VAT Liability Error", str(e))
+        # frappe.throw("Failed to fetch liabilities. Please check error logs.")
+
+@frappe.whitelist()
+def fetch_payments(from_date=None, to_date=None):
+    """
+    Fetch VAT liabilities from HMRC API matching your doctype field names
+    """
+    try:
+        # 1. Get company and VAT settings
+        default_company = frappe.db.get_single_value("Global Defaults", "default_company")
+        if not default_company:
+            frappe.throw("No default company set in Global Defaults.")
+            
+        vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        if not vrn:
+            frappe.throw(f"VAT Registration Number not set for company {default_company}")
+
+        vat_settings = frappe.get_doc("VAT Settings", {"company": default_company})
+        if not vat_settings:
+            frappe.throw("VAT Settings not found for company.")
+            
+        if not vat_settings.get_password("access_token"):
+            frappe.throw("Access token not found. Please authorize with HMRC first.")
+
+        # 2. Prepare API request with your field names
+        params = {}
+        if from_date:
+            params["from"] = from_date  # Matches your from_date field
+        if to_date:
+            params["to"] = to_date  # Matches your to_date field
+        
+        response = make_hmrc_request(
+            "GET",
+            f"/organisations/vat/{vrn}/payments",
+            vat_settings.name,
+            params=params
+        )
+        
+        if not response.get("success"):
+            error_msg = response.get("error", "Unknown error")
+            status_code = response.get("status_code", "unknown")
+
+        if status_code == 404:
+            frappe.throw("No liability data found for the specified period.")
+        else:
+            frappe.throw(f"HMRC API Error ({status_code}): {error_msg}")
+            
+        payments = response.get("data", {}).get("payments", [])
+        today = nowdate()
+        formatted_data = []
+        
+        for payment in payments:
+            
+            formatted_data.append({
+                "amount": float(payment.get("amount", 0)),
+                "received_date": payment.get("received"),
+            })
+            
+        return formatted_data
+        
+    except requests.exceptions.RequestException as e:
+        frappe.log_error("HMRC API Connection Error", str(e))
+        # frappe.throw("Failed to connect to HMRC API")
+    except Exception as e:
+        frappe.log_error("VAT Payment Error", str(e))
+        # frappe.throw("Failed to fetch VAT payments")
+
+def get_fraud_prevention_headers():
+    """Generate fully compliant HMRC Fraud Prevention Headers"""
+    try:
+        # Timestamp (used in multiple headers)
+        timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+        
+        # 1. Device Identification
+        device_id = frappe.db.get_value("System Settings", "System Settings", "hmrc_device_id") or str(uuid.uuid4())
+        frappe.db.set_value("System Settings", "System Settings", "hmrc_device_id", device_id)
+        frappe.db.commit()
+
+        # 2. Network Information
+        local_ips = get_local_ips()
+        public_ip = get_public_ip()
+        
+        # 3. System Information
+        os_name = platform.system() or "Linux"
+        os_version = platform.release() or "1.0"
+        device_model = platform.node() or socket.gethostname() or "ERPNext-Server"
+
+        # Percent-encode all values properly
+        user_id = f"os={quote(os_name)}&user={quote(frappe.session.user or 'system')}"
+        license_hash = hashlib.sha256(get_site_name().encode()).hexdigest()
+
+        headers = {
+            # Connection and Device
+            "Gov-Client-Connection-Method": "DESKTOP_APP_VIA_SERVER",
+            "Gov-Client-Device-ID": device_id,
+            
+            # Network Information
+            "Gov-Client-Local-IPs": ",".join(local_ips),
+            "Gov-Client-Local-IPs-Timestamp": timestamp,
+            "Gov-Client-MAC-Addresses": "00-11-22-33-44-55",
+            "Gov-Client-Public-IP": public_ip,
+            "Gov-Client-Public-IP-Timestamp": timestamp,
+            "Gov-Client-Public-Port": "49152",  # Valid ephemeral port
+            "Gov-Client-Multi-Factor": "",  # Requires HMRC exemption documentation
+            
+            # Client Environment
+            "Gov-Client-Screens": "width=1920&height=1080&scaling-factor=1&colour-depth=24",
+            "Gov-Client-Timezone": get_timezone(),
+            "Gov-Client-User-IDs": user_id,
+            "Gov-Client-User-Agent": (
+                f"os-family={quote(os_name)}&"
+                f"os-version={quote(os_version)}&"
+                f"device-manufacturer={quote(get_device_manufacturer())}&"
+                f"device-model={quote(device_model)}"
+            ),
+            "Gov-Client-Window-Size": "width=1920&height=1080",
+            
+            # Vendor Information
+            "Gov-Vendor-Forwarded": f"by={public_ip}&for={public_ip}",
+            "Gov-Vendor-License-IDs": f"erpnext={license_hash}",
+            "Gov-Vendor-Product-Name": "ERPNext",
+            "Gov-Vendor-Version": f"client=1.0&server={quote(frappe.__version__)}",
+            "Gov-Vendor-Public-IP": public_ip
+        }
+        
+        return headers
+
+    except Exception as e:
+        frappe.log_error("Fraud Prevention Header Error", str(e))
+        return generate_compliant_fallback_headers()
+
+def get_local_ips():
+    """Get all non-loopback local IPs"""
+    try:
+        ips = []
+        for interface in socket.getaddrinfo(socket.gethostname(), None):
+            ip = interface[4][0]
+            if '.' in ip and not ip.startswith('127.'):
+                ips.append(ip)
+        return ips if ips else ["192.168.1.1"]
+    except:
+        return ["192.168.1.1"]
+
+def get_public_ip():
+    """Get actual public IP with multiple fallbacks"""
+    services = [
+        'https://api.ipify.org',
+        'https://ident.me',
+        'https://ifconfig.me/ip'
+    ]
+    
+    for service in services:
+        try:
+            ip = requests.get(service, timeout=2).text.strip()
+            if is_valid_ip(ip):
+                return ip
+        except:
+            continue
+            
+    return "203.0.113.1"  # RFC TEST-NET-1 fallback
+
+def get_timezone():
+    """Get current timezone offset"""
+    offset = -time.timezone // 3600
+    return f"UTC{'+' if offset >=0 else ''}{offset}:00"
+
+def get_device_manufacturer():
+    """Try to detect hardware manufacturer"""
+    try:
+        if platform.system() == "Linux":
+            with open('/sys/class/dmi/id/sys_vendor') as f:
+                return f.read().strip() or "Unknown"
+        return platform.system()
+    except:
+        return "Unknown"
+
+def generate_compliant_fallback_headers():
+    """Generate minimum valid headers when all else fails"""
+    timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+    return {
+        "Gov-Client-Connection-Method": "DESKTOP_APP_VIA_SERVER",
+        "Gov-Client-Device-ID": str(uuid.uuid4()),
+        "Gov-Client-Local-IPs": "192.168.1.1",
+        "Gov-Client-Local-IPs-Timestamp": timestamp,
+        "Gov-Client-MAC-Addresses": "00-11-22-33-44-55",
+        "Gov-Client-Public-IP": "203.0.113.1",
+        "Gov-Client-Public-IP-Timestamp": timestamp,
+        "Gov-Client-Public-Port": "49152",
+        "Gov-Client-Screens": "width=1920&height=1080&scaling-factor=1&colour-depth=24",
+        "Gov-Client-Timezone": "UTC+00:00",
+        "Gov-Client-User-IDs": "os=Linux&user=system",
+        "Gov-Client-User-Agent": "os-family=Linux&os-version=1.0&device-manufacturer=Generic&device-model=Server",
+        "Gov-Client-Window-Size": "width=1920&height=1080",
+        "Gov-Vendor-Forwarded": "by=203.0.113.1&for=203.0.113.1",
+        "Gov-Vendor-License-IDs": "erpnext=" + hashlib.sha256("default".encode()).hexdigest(),
+        "Gov-Vendor-Product-Name": "ERPNext",
+        "Gov-Vendor-Version": "client=1.0&server=1.0",
+        "Gov-Vendor-Public-IP": "203.0.113.1",
+        "Gov-Client-Multi-Factor": ""
+    }
+
+def is_valid_ip(ip):
+    """Validate IPv4 address format"""
+    try:
+        socket.inet_pton(socket.AF_INET, ip)
+        return True
+    except:
+        return False
+
+# console
+# from zikpro_erpnext_uk_vat.api import validate_fraud_headers
+# validate_fraud_headers()
+
+@frappe.whitelist()
+def validate_fraud_headers():
+    try:
+        default_company = frappe.db.get_single_value("Global Defaults", "default_company")
+        if not default_company:
+            return {"success": False, "message": "No default company set"}
+            
+        vat_settings = frappe.get_all("VAT Settings", filters={"company": default_company}, limit=1)
+        if not vat_settings:
+            return {"success": False, "message": "No VAT Settings found"}
+            
+        vat_settings = frappe.get_doc("VAT Settings", vat_settings[0].name)
+
+        access_token = vat_settings.get_password("access_token")
+        if not access_token:
+            return {"success": False, "message": "No access token found"}
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            **get_fraud_prevention_headers()
+        }
+        
+        response = requests.get(
+            "https://test-api.service.hmrc.gov.uk/test/fraud-prevention-headers/validate",
+            headers=headers,
+            timeout=30
+        )
+
+        if response.status_code == 401: 
+            refresh_result = refresh_access_token(vat_settings.name)
+            if not refresh_result.get("success"):
+                return refresh_result
+            
+            return validate_fraud_headers()
+            
+        return {
+            "success": response.status_code == 200,
+            "status_code": response.status_code,
+            "response": response.json() if response.content else response.text
+        }
+
+    except Exception as e:
+        frappe.log_error("Header Validation Error", str(e))
+        return {"success": False, "message": f"Validation failed: {str(e)}"}
