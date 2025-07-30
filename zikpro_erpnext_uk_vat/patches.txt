@@ -3,4 +3,4 @@
 # Read docs to understand patches: https://frappeframework.com/docs/v14/user/en/database-migrations
 
 [post_model_sync]
-zikpro_erpnext_uk_vat.patches.v1_0.add_last_2fa_field
+# zikpro_erpnext_uk_vat.patches.v1_0.add_last_2fa_field

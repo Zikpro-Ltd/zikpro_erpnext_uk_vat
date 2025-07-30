@@ -1047,7 +1047,13 @@ def get_mfa_header():
         if not user or user == "Guest":
             return ""
 
-        last_2fa = frappe.db.get_value("User", user, "last_2fa_login")
+        # last_2fa = frappe.db.get_value("User", user, "last_2fa_login")
+        # Get from our custom doctype instead of User
+        last_2fa = frappe.db.get_value(
+            "Last 2FA Login", 
+            {"user": user}, 
+            "last_login"
+        )
         if not last_2fa:
             return ""
 
