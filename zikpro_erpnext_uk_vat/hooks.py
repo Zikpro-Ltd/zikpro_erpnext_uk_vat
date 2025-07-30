@@ -12,6 +12,18 @@ app_license = "mit"
 # include js, css files in header of desk.html
 # app_include_css = "/assets/zikpro_erpnext_uk_vat/css/zikpro_erpnext_uk_vat.css"
 # app_include_js = "/assets/zikpro_erpnext_uk_vat/js/zikpro_erpnext_uk_vat.js"
+app_include_js = [
+    "/assets/zikpro_erpnext_uk_vat/js/hmrc_fraud_prevention.js"
+]
+
+whitelisted_methods = [
+    "zikpro_erpnext_uk_vat.utils.update_client_info"
+]
+
+# override_whitelisted_methods = {
+#     "frappe.auth.verify_otp": "zikpro_erpnext_uk_vat.auth.custom_verify_otp"
+# }
+
 
 # include js, css files in header of web template
 # web_include_css = "/assets/zikpro_erpnext_uk_vat/css/zikpro_erpnext_uk_vat.css"
@@ -121,6 +133,11 @@ app_license = "mit"
 # Document Events
 # ---------------
 # Hook on document methods and events
+doc_events = {
+    "*": {
+        "on_login": "zikpro_erpnext_uk_vat.utils.on_login_handler"
+    }
+}
 
 # doc_events = {
 # 	"*": {

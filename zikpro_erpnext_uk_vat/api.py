@@ -15,6 +15,9 @@ import socket
 import datetime
 import platform
 from frappe.utils import get_site_name,get_host_name
+import time
+# from frappe.utils import hash
+
 
 # HMRC OAuth 2.0 Configuration
 HMRC_AUTH_URL = "https://test-api.service.hmrc.gov.uk/oauth/authorize"
@@ -804,150 +807,433 @@ def fetch_payments(from_date=None, to_date=None):
         # frappe.throw("Failed to fetch VAT payments")
 
 def get_fraud_prevention_headers():
-    """Generate fully compliant HMRC Fraud Prevention Headers"""
+    """Generate HMRC Fraud Prevention Headers for WEB_APP_VIA_SERVER"""
     try:
         # Timestamp (used in multiple headers)
-        timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.datetime.utcnow().isoformat(timespec='milliseconds') + "Z"
         
         # 1. Device Identification
-        device_id = frappe.db.get_value("System Settings", "System Settings", "hmrc_device_id") or str(uuid.uuid4())
-        frappe.db.set_value("System Settings", "System Settings", "hmrc_device_id", device_id)
-        frappe.db.commit()
-
-        # 2. Network Information
-        local_ips = get_local_ips()
-        public_ip = get_public_ip()
+        device_id = get_device_id()
         
-        # 3. System Information
-        os_name = platform.system() or "Linux"
-        os_version = platform.release() or "1.0"
-        device_model = platform.node() or socket.gethostname() or "ERPNext-Server"
+        # 2. Network Information
+        public_ip = get_public_ip()
+        public_port = get_client_port()
+        
+        # 3. User and System Information
+        user_ids = get_user_ids()
+        # screen_info = get_screen_info()
+        # timezone = get_timezone()
+        browser_user_agent = get_browser_user_agent()
 
-        # Percent-encode all values properly
-        user_id = f"os={quote(os_name)}&user={quote(frappe.session.user or 'system')}"
-        license_hash = hashlib.sha256(get_site_name().encode()).hexdigest()
+        # 4. Multi-Factor Authentication
+        mfa_header = get_mfa_header()
+
+        # 5. Vendor Information
+        vendor_public_ip = get_vendor_public_ip()  # Assuming same as client public IP for simple setups
+        vendor_forwarded = get_vendor_forwarded(public_ip)
+        license_ids = get_license_ids()
+
+        client_info = frappe.session.data.get('client_info', {})
+        
+        # Screen info
+        screen_data = (
+            f"width={client_info.get('screen_width', 1920)}&"
+            f"height={client_info.get('screen_height', 1080)}&"
+            f"scaling-factor={client_info.get('pixel_ratio', 1)}&"
+            f"colour-depth={client_info.get('color_depth', 24)}"
+        )
+        
+        # Timezone
+        offset = client_info.get('timezone_offset', 0)
+        timezone = f"UTC{'+' if offset >=0 else ''}{offset}:00"
+        
+        # Window size
+        window_size = (
+            f"width={client_info.get('width', 1920)}&"
+            f"height={client_info.get('height', 1080)}"
+        )
 
         headers = {
-            # Connection and Device
-            "Gov-Client-Connection-Method": "DESKTOP_APP_VIA_SERVER",
+            # Required Headers
+            "Gov-Client-Connection-Method": "WEB_APP_VIA_SERVER",
             "Gov-Client-Device-ID": device_id,
-            
-            # Network Information
-            "Gov-Client-Local-IPs": ",".join(local_ips),
-            "Gov-Client-Local-IPs-Timestamp": timestamp,
-            "Gov-Client-MAC-Addresses": "00-11-22-33-44-55",
+            "Gov-Client-Browser-JS-User-Agent": browser_user_agent,
             "Gov-Client-Public-IP": public_ip,
             "Gov-Client-Public-IP-Timestamp": timestamp,
-            "Gov-Client-Public-Port": "49152",  # Valid ephemeral port
-            "Gov-Client-Multi-Factor": "",  # Requires HMRC exemption documentation
+            "Gov-Client-Public-Port": public_port,
+            "Gov-Client-Screens": screen_data,
+            "Gov-Client-Timezone": timezone,
+            "Gov-Client-User-IDs": user_ids,
+            "Gov-Client-Window-Size": window_size,
             
-            # Client Environment
-            "Gov-Client-Screens": "width=1920&height=1080&scaling-factor=1&colour-depth=24",
-            "Gov-Client-Timezone": get_timezone(),
-            "Gov-Client-User-IDs": user_id,
-            "Gov-Client-User-Agent": (
-                f"os-family={quote(os_name)}&"
-                f"os-version={quote(os_version)}&"
-                f"device-manufacturer={quote(get_device_manufacturer())}&"
-                f"device-model={quote(device_model)}"
-            ),
-            "Gov-Client-Window-Size": "width=1920&height=1080",
+            # Multi-Factor Authentication
+            "Gov-Client-Multi-Factor": mfa_header,
             
-            # Vendor Information
-            "Gov-Vendor-Forwarded": f"by={public_ip}&for={public_ip}",
-            "Gov-Vendor-License-IDs": f"erpnext={license_hash}",
+            # Vendor Headers
+            "Gov-Vendor-Forwarded": vendor_forwarded,
+            "Gov-Vendor-License-IDs": license_ids,
             "Gov-Vendor-Product-Name": "ERPNext",
-            "Gov-Vendor-Version": f"client=1.0&server={quote(frappe.__version__)}",
-            "Gov-Vendor-Public-IP": public_ip
+            "Gov-Vendor-Public-IP": vendor_public_ip,
+            "Gov-Vendor-Version": f"erpnext={quote(frappe.__version__)}"
         }
         
         return headers
 
     except Exception as e:
         frappe.log_error("Fraud Prevention Header Error", str(e))
-        return generate_compliant_fallback_headers()
+        # return generate_compliant_fallback_headers()
+        return {}
 
-def get_local_ips():
-    """Get all non-loopback local IPs"""
+# ============== HELPER FUNCTIONS ==============
+
+def get_device_id():
+    """Get persistent device ID from cookies or generate new one"""
     try:
-        ips = []
-        for interface in socket.getaddrinfo(socket.gethostname(), None):
-            ip = interface[4][0]
-            if '.' in ip and not ip.startswith('127.'):
-                ips.append(ip)
-        return ips if ips else ["192.168.1.1"]
+        device_id = frappe.local.request.cookies.get('hmrc_device_id')
+        if not device_id:
+            device_id = str(uuid.uuid4())
+            frappe.local.response.cookies['hmrc_device_id'] = {
+                'value': device_id,
+                'expires': 10*365*24*60*60,  # 1 year expiration
+                'httponly': True,
+                'secure': True
+            }
+        return device_id
     except:
-        return ["192.168.1.1"]
+        return str(uuid.uuid4())
 
 def get_public_ip():
-    """Get actual public IP with multiple fallbacks"""
-    services = [
-        'https://api.ipify.org',
-        'https://ident.me',
-        'https://ifconfig.me/ip'
-    ]
-    
-    for service in services:
-        try:
-            ip = requests.get(service, timeout=2).text.strip()
-            if is_valid_ip(ip):
-                return ip
-        except:
-            continue
-            
-    return "203.0.113.1"  # RFC TEST-NET-1 fallback
-
-def get_timezone():
-    """Get current timezone offset"""
-    offset = -time.timezone // 3600
-    return f"UTC{'+' if offset >=0 else ''}{offset}:00"
-
-def get_device_manufacturer():
-    """Try to detect hardware manufacturer"""
+    """Get the actual end-user's public IP with proper proxy handling"""
     try:
-        if platform.system() == "Linux":
-            with open('/sys/class/dmi/id/sys_vendor') as f:
-                return f.read().strip() or "Unknown"
-        return platform.system()
-    except:
-        return "Unknown"
-
-def generate_compliant_fallback_headers():
-    """Generate minimum valid headers when all else fails"""
-    timestamp = datetime.datetime.utcnow().isoformat() + "Z"
-    return {
-        "Gov-Client-Connection-Method": "DESKTOP_APP_VIA_SERVER",
-        "Gov-Client-Device-ID": str(uuid.uuid4()),
-        "Gov-Client-Local-IPs": "192.168.1.1",
-        "Gov-Client-Local-IPs-Timestamp": timestamp,
-        "Gov-Client-MAC-Addresses": "00-11-22-33-44-55",
-        "Gov-Client-Public-IP": "203.0.113.1",
-        "Gov-Client-Public-IP-Timestamp": timestamp,
-        "Gov-Client-Public-Port": "49152",
-        "Gov-Client-Screens": "width=1920&height=1080&scaling-factor=1&colour-depth=24",
-        "Gov-Client-Timezone": "UTC+00:00",
-        "Gov-Client-User-IDs": "os=Linux&user=system",
-        "Gov-Client-User-Agent": "os-family=Linux&os-version=1.0&device-manufacturer=Generic&device-model=Server",
-        "Gov-Client-Window-Size": "width=1920&height=1080",
-        "Gov-Vendor-Forwarded": "by=203.0.113.1&for=203.0.113.1",
-        "Gov-Vendor-License-IDs": "erpnext=" + hashlib.sha256("default".encode()).hexdigest(),
-        "Gov-Vendor-Product-Name": "ERPNext",
-        "Gov-Vendor-Version": "client=1.0&server=1.0",
-        "Gov-Vendor-Public-IP": "203.0.113.1",
-        "Gov-Client-Multi-Factor": ""
-    }
+        # 1. Standard headers from proxies/load balancers
+        ip = (
+            frappe.local.request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or
+            frappe.local.request.headers.get('X-Real-IP', '') or
+            frappe.local.request.headers.get('CF-Connecting-IP', '')  # Cloudflare
+        )
+        
+        # 2. Fallback to direct connection IP
+        if not ip:
+            ip = frappe.local.request.environ.get('REMOTE_ADDR', '')
+        
+        # 3. Validate the IP
+        if ip and is_valid_ip(ip):
+            return ip
+            
+        # 4. Final fallback for private networks/missing data
+        return None  # Explicit None is better than test-net IP
+        
+    except Exception:
+        return None
 
 def is_valid_ip(ip):
-    """Validate IPv4 address format"""
+    """Validate both IPv4 and IPv6 addresses"""
     try:
-        socket.inet_pton(socket.AF_INET, ip)
-        return True
+        socket.inet_pton(
+            socket.AF_INET6 if ':' in ip else socket.AF_INET,
+            ip
+        )
+        return not ip.startswith(('10.', '172.', '192.168.', 'fc00::/7'))
     except:
         return False
+
+def get_client_port():
+    """HMRC-compliant client port detection with proper fallbacks"""
+    try:
+        # 1. Try proxy headers first
+        port = (
+            frappe.local.request.headers.get('X-Client-Port') or  # Custom header you configure
+            frappe.local.request.headers.get('X-Forwarded-Port')  # Common LB header
+        )
+        
+        # 2. Fallback to direct connection
+        if not port:
+            port = frappe.local.request.environ.get('REMOTE_PORT')
+        
+        # 3. Validate port
+        port = int(port or 0)
+        if 1 <= port <= 65535 and port not in [80, 443]:
+            return str(port)
+            
+        # 4. If invalid/missing, return empty (HMRC allows omission)
+        return ""
+        
+    except Exception:
+        return ""  # Omit entirely if undetectable
+
+# def get_screen_info():
+#     """Get screen info from client-side data or use defaults"""
+#     try:
+#         if frappe.session.data.get('screen_info'):
+#             screen = frappe.session.data['screen_info']
+#             return (
+#                 f"width={screen.get('width', 1920)}&"
+#                 f"height={screen.get('height', 1080)}&"
+#                 f"scaling-factor={screen.get('scaling', 1)}&"
+#                 f"colour-depth={screen.get('color_depth', 24)}"
+#             )
+#     except:
+#         pass
+#     return "width=1920&height=1080&scaling-factor=1&colour-depth=24"
+
+# def get_window_size(screen_info):
+#     """Extract window size from screen info"""
+#     try:
+#         # Parse screen_info to get width and height
+#         parts = dict(pair.split('=') for pair in screen_info.split('&'))
+#         return f"width={parts.get('width', 1920)}&height={parts.get('height', 1080)}"
+#     except:
+#         return "width=1920&height=1080"
+
+# def get_timezone():
+#     """Get timezone from client-side data or use server timezone"""
+#     try:
+#         if frappe.session.data.get('timezone_offset'):
+#             offset = frappe.session.data['timezone_offset']
+#             return f"UTC{'+' if offset >=0 else ''}{offset}:00"
+#     except:
+#         pass
+    
+#     # Server fallback
+#     offset = -time.timezone // 3600
+#     return f"UTC{'+' if offset >=0 else ''}{offset}:00"
+
+def get_browser_user_agent():
+    """Get browser user agent from request headers"""
+    try:
+        return frappe.local.request.headers.get('User-Agent', '')
+    except:
+        return ""
+
+def get_user_ids():
+    """HMRC-compliant user identification with multiple identifiers"""
+    try:
+        user = frappe.session.user
+        if not user or user == "Guest":
+            frappe.msgprint(f"Current Session User: {frappe.session.user}")
+            return "erpnext=system"
+
+        # Fetch user document
+        user_doc = frappe.get_doc("User", user)
+
+        # Prepare identifiers
+        identifiers = []
+
+        if user_doc.full_name:
+            identifiers.append(f"username={quote(user_doc.full_name)}")
+        if user_doc.email:
+            identifiers.append(f"email={quote(user_doc.email)}")
+        if user_doc.name:
+            identifiers.append(f"user_id={quote(user_doc.name)}")
+
+        # Get roles safely
+        try:
+            roles = user_doc.get_roles()
+            if roles:
+                identifiers.append(f"roles={quote(','.join(roles))}")
+        except Exception as role_err:
+            frappe.log_error("Role Fetch Error", frappe.get_traceback())
+
+        return "&".join(identifiers)
+
+    except Exception as e:
+        frappe.log_error("User ID Header Error", frappe.get_traceback())
+        return "erpnext=system"
+
+def get_mfa_header():
+    """Generate HMRC-compliant MFA header"""
+    try:
+        user = frappe.session.user
+        if not user or user == "Guest":
+            return ""
+
+        last_2fa = frappe.db.get_value("User", user, "last_2fa_login")
+        if not last_2fa:
+            return ""
+
+        method = frappe.db.get_single_value("System Settings", "two_factor_method") or "Email"
+        mfa_type = "AUTH_CODE" if method == "Email" else "TOTP"
+        email = frappe.db.get_value("User", user, "email")
+        unique_ref = hashlib.sha256(f"zikpro_salt_{email}_{last_2fa}".encode()).hexdigest()[:32]
+        timestamp = last_2fa.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        return f"type={quote(mfa_type)}&timestamp={quote(timestamp)}&unique-reference={unique_ref}"
+    except Exception as e:
+        frappe.log_error("MFA Header Error", str(e))
+        return ""
+
+def is_public_ip(ip):
+    """Check if IP is public (not RFC 1918)"""
+    try:
+        return not any(ip.startswith(prefix) for prefix in 
+                      ['10.', '172.', '192.168.', 'fc00::'])
+    except:
+        return False
+
+def get_vendor_forwarded(client_ip):
+    """Generate HMRC-compliant forwarded header with proxy chain"""
+    hops = []
+    
+    try:
+        # Get all X-Forwarded-For IPs (reverse order)
+        forwarded_ips = frappe.local.request.headers.get('X-Forwarded-For', '')
+        proxy_chain = [ip.strip() for ip in forwarded_ips.split(',') if ip.strip()]
+        proxy_chain.reverse()  # Client IP is now first
+        
+        # Add client IP if valid
+        if client_ip and is_public_ip(client_ip):
+            proxy_chain.insert(0, client_ip)
+        
+        # Get server's public IP (skip private IPs)
+        server_ip = None
+        try:
+            server_ip = socket.gethostbyname(socket.gethostname())
+            if not is_public_ip(server_ip):
+                server_ip = frappe.local.conf.get("public_ip")  # Fallback
+        except:
+            pass
+        
+        # Build hop chain
+        for i in range(len(proxy_chain)):
+            if i == 0:  # First hop (client → first public proxy)
+                if len(proxy_chain) > 1:
+                    hops.append(f"by={quote(proxy_chain[1])}&for={quote(proxy_chain[0])}")
+                elif server_ip:
+                    hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[0])}")
+            else:  # Subsequent hops
+                if i+1 < len(proxy_chain):
+                    hops.append(f"by={quote(proxy_chain[i+1])}&for={quote(proxy_chain[i])}")
+                elif server_ip:
+                    hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[i])}")
+        
+        # Add final hop (last proxy → your server)
+        if server_ip and hops:
+            hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[-1])}")
+        
+        return ",".join(hops) if hops else ""
+        
+    except Exception as e:
+        frappe.log_error("Vendor-Forwarded Header Error", str(e))
+        return ""
+
+def get_license_ids():
+    """Generate HMRC-compliant license IDs with proper encoding"""
+    try:
+        # 1. Get actual license key(s) from your system
+        license_key = frappe.db.get_value("System Settings", "System Settings", "license_key") or ""
+        
+        # 2. If no license exists (e.g., open-source), use site-specific hash
+        if not license_key:
+            site_hash = hashlib.sha256(frappe.local.site.encode()).hexdigest()
+            return f"erpnext={quote(site_hash)}"
+        
+        # 3. For paid licenses, use the actual key (hashed)
+        return f"erpnext={quote(hashlib.sha256(license_key.encode()).hexdigest())}"
+        
+    except Exception:
+        return ""  # Omit entirely if data is unavailable
+
+def get_vendor_public_ip():
+    """Get the public IP of your outermost infrastructure (WAF/LB/Server)"""
+    try:
+        # 1. For Frappe Cloud - Use pre-configured VM IP
+        if hasattr(frappe.conf, 'vm_public_ip'):
+            return frappe.conf.vm_public_ip  # Auto-set by Frappe Cloud
+        
+        # 2. For self-hosted with reverse proxy (Nginx/Apache)
+        proxy_ip = frappe.local.request.headers.get(
+            'X-Forwarded-Server',
+            frappe.local.request.headers.get('Host')
+        )
+        if proxy_ip and is_public_ip(proxy_ip):
+            return proxy_ip
+        
+        # 3. Fallback to server's public IP
+        import requests
+        return requests.get('https://api.ipify.org', timeout=2).text.strip() or ""
+    
+    except Exception:
+        return ""  # Omit if undetectable
+        
+
+# def generate_compliant_fallback_headers():
+#     """Generate minimum valid headers when all else fails"""
+#     timestamp = datetime.datetime.utcnow().isoformat(timespec='milliseconds') + "Z"
+#     return {
+#         "Gov-Client-Connection-Method": "WEB_APP_VIA_SERVER",
+#         "Gov-Client-Device-ID": str(uuid.uuid4()),
+#         "Gov-Client-Browser-JS-User-Agent": "",
+#         "Gov-Client-Public-IP": "203.0.113.1",
+#         "Gov-Client-Public-IP-Timestamp": timestamp,
+#         "Gov-Client-Public-Port": "49152",
+#         "Gov-Client-Screens": "width=1920&height=1080&scaling-factor=1&colour-depth=24",
+#         "Gov-Client-Timezone": "UTC+00:00",
+#         "Gov-Client-User-IDs": "erpnext=system",
+#         "Gov-Client-Window-Size": "width=1920&height=1080",
+#         "Gov-Client-Multi-Factor": "",
+#         "Gov-Vendor-Forwarded": "by=203.0.113.1&for=203.0.113.1",
+#         "Gov-Vendor-License-IDs": "erpnext=0000000000000000000000000000000000000000000000000000000000000000",
+#         "Gov-Vendor-Product-Name": "ERPNext",
+#         "Gov-Vendor-Public-IP": "203.0.113.1",
+#         "Gov-Vendor-Version": "erpnext=1.0"
+#     }
+
+# def is_valid_ip(ip):
+#     """Validate IPv4 address format"""
+#     try:
+#         socket.inet_pton(socket.AF_INET, ip)
+#         return True
+#     except:
+#         return False
 
 # console
 # from zikpro_erpnext_uk_vat.api import validate_fraud_headers
 # validate_fraud_headers()
+
+# @frappe.whitelist()
+# def validate_fraud_headers():
+#     try:
+#         default_company = frappe.db.get_single_value("Global Defaults", "default_company")
+#         if not default_company:
+#             return {"success": False, "message": "No default company set"}
+            
+#         vat_settings = frappe.get_all("VAT Settings", filters={"company": default_company}, limit=1)
+#         if not vat_settings:
+#             return {"success": False, "message": "No VAT Settings found"}
+            
+#         vat_settings = frappe.get_doc("VAT Settings", vat_settings[0].name)
+
+#         access_token = vat_settings.get_password("access_token")
+#         if not access_token:
+#             return {"success": False, "message": "No access token found"}
+
+#         headers = {
+#             "Authorization": f"Bearer {access_token}",
+#             **get_fraud_prevention_headers()
+#         }
+        
+#         response = requests.get(
+#             "https://test-api.service.hmrc.gov.uk/test/fraud-prevention-headers/validate",
+#             headers=headers,
+#             timeout=30
+#         )
+
+#         if response.status_code == 401: 
+#             refresh_result = refresh_access_token(vat_settings.name)
+#             if not refresh_result.get("success"):
+#                 return refresh_result
+            
+#             return validate_fraud_headers()
+            
+#         return {
+#             "success": response.status_code == 200,
+#             "status_code": response.status_code,
+#             "response": response.json() if response.content else response.text
+#         }
+
+#     except Exception as e:
+#         frappe.log_error("Header Validation Error", str(e))
+#         return {"success": False, "message": f"Validation failed: {str(e)}"}
 
 @frappe.whitelist()
 def validate_fraud_headers():
@@ -970,7 +1256,11 @@ def validate_fraud_headers():
             "Authorization": f"Bearer {access_token}",
             **get_fraud_prevention_headers()
         }
-        
+
+        # ✅ Log headers to console for debugging (visible in browser when you return them)
+        if frappe.conf.developer_mode:
+            frappe.msgprint(f"Fraud Headers:<br><pre>{frappe.as_json(headers)}</pre>")
+
         response = requests.get(
             "https://test-api.service.hmrc.gov.uk/test/fraud-prevention-headers/validate",
             headers=headers,
@@ -983,10 +1273,11 @@ def validate_fraud_headers():
                 return refresh_result
             
             return validate_fraud_headers()
-            
+
         return {
             "success": response.status_code == 200,
             "status_code": response.status_code,
+            "headers": headers,  # ✅ Add headers to response for browser console
             "response": response.json() if response.content else response.text
         }
 
