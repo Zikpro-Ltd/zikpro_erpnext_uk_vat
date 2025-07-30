@@ -81,6 +81,9 @@ whitelisted_methods = [
 
 # before_install = "zikpro_erpnext_uk_vat.install.before_install"
 # after_install = "zikpro_erpnext_uk_vat.install.after_install"
+# This ensures patches run on install/update
+after_install = "zikpro_erpnext_uk_vat.setup.after_install"
+after_migrate = "zikpro_erpnext_uk_vat.setup.after_migrate"
 
 # Uninstallation
 # ------------
