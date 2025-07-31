@@ -15,7 +15,7 @@ def apply_otp_patch():
     except Exception as e:
         frappe.log_error("DEBUG", f"Patch failed: {str(e)}")
 
-# ✅ Register hook dynamically
+# ✅ Register hook dynamically haha
 if hasattr(frappe, "hooks"):
     if "after_migrate" not in frappe.hooks:
         frappe.hooks["after_migrate"] = []
