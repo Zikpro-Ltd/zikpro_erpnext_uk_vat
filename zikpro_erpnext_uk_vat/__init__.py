@@ -1,17 +1,26 @@
 __version__ = "0.0.1"
 
 import frappe
-from .utils import patched_confirm_otp_token
-import frappe.twofactor
+from frappe import hooks
 
-frappe.log_error("DEBUG", "zikpro_erpnext_uk_vat: __init__.py loaded")  # ✅ Debug
+def after_migrate():
+    apply_otp_patch()
 
-# ✅ Patch OTP confirmation
-try:
-    frappe.twofactor.confirm_otp_token = patched_confirm_otp_token
-    frappe.log_error("DEBUG", "confirm_otp_token successfully patched")
-except Exception as e:
-    frappe.log_error("DEBUG", f"Failed to patch confirm_otp_token: {str(e)}")
+def apply_otp_patch():
+    try:
+        from .utils import patched_confirm_otp_token
+        import frappe.twofactor
+        frappe.twofactor.confirm_otp_token = patched_confirm_otp_token
+        frappe.log_error("DEBUG", "confirm_otp_token patched successfully")
+    except Exception as e:
+        frappe.log_error("DEBUG", f"Patch failed: {str(e)}")
+
+# ✅ Register hook dynamically
+if hasattr(frappe, "hooks"):
+    if "after_migrate" not in frappe.hooks:
+        frappe.hooks["after_migrate"] = []
+    frappe.hooks["after_migrate"].append("zikpro_erpnext_uk_vat.apply_otp_patch")
+
 
 
 # import frappe
