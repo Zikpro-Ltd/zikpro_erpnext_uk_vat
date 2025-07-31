@@ -50,50 +50,78 @@ def get_client_info():
     """Retrieve stored client information"""
     return frappe.session.data.get('client_info', {})
 
-import frappe
-from frappe.utils import now_datetime
-from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
 
+# MFA Timestamp Functions
+# def update_mfa_timestamp(user):
+#     """Update the MFA timestamp for the given user"""
+#     try:
+#         if not user or user == "Guest":
+#             return
+
+#         # Using direct SQL for better performance in both local and cloud
+#         if frappe.db.exists("User MFA Timestamp", {"user": user}):
+#             frappe.db.sql("""
+#                 UPDATE `tabUser MFA Timestamp`
+#                 SET last_login = %s
+#                 WHERE user = %s
+#             """, (now_datetime(), user))
+#         else:
+#             frappe.get_doc({
+#                 "doctype": "User MFA Timestamp",
+#                 "user": user,
+#                 "last_login": now_datetime()
+#             }).insert(ignore_permissions=True, ignore_if_duplicate=True)
+
+#         frappe.db.commit()  # Explicit commit for immediate update
+
+#     except Exception as e:
+#         frappe.log_error(title="MFA Timestamp Update Failed", message=str(e))
+#         frappe.db.rollback()
 
 def update_mfa_timestamp(user):
+    """Production-optimized version"""
     try:
         if not user or user == "Guest":
-            frappe.log_error("DEBUG", "Skipped MFA update: Guest user")
             return
 
-        frappe.log_error("DEBUG", f"Updating MFA timestamp for {user}")
-
-        if frappe.db.exists("User MFA Timestamp", {"user": user}):
-            frappe.db.set_value(
-                "User MFA Timestamp",
-                {"user": user},
-                "last_login",
-                now_datetime(),
-                update_modified=False
-            )
-        else:
-            frappe.get_doc({
-                "doctype": "User MFA Timestamp",
-                "user": user,
-                "last_login": now_datetime()
-            }).insert(ignore_permissions=True)
-
+        # Atomic UPSERT (works in all environments)
+        frappe.db.sql("""
+            INSERT INTO `tabUser MFA Timestamp` 
+            (name, user, last_login, creation, modified)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE last_login = VALUES(last_login)
+        """, (
+            frappe.generate_hash(length=10),
+            user,
+            now_datetime(),
+            now_datetime(),
+            now_datetime()
+        ))
+        
         frappe.db.commit()
-        frappe.log_error("DEBUG", f"MFA timestamp updated for {user}")
 
     except Exception as e:
-        frappe.log_error("MFA Timestamp Update Failed", str(e))
-
+        frappe.log_error(
+            title="MFA Timestamp Update Failed", 
+            message=f"User: {user}\nError: {str(e)}"
+        )
+        frappe.db.rollback()
 
 def patched_confirm_otp_token(login_manager):
-    frappe.log_error("DEBUG", f"patched_confirm_otp_token executed for {login_manager.user}")
+    """Wrapper around the original OTP confirmation that records successful MFA"""
     result = original_confirm_otp_token(login_manager)
-    frappe.log_error("DEBUG", f"OTP verification result: {result}")
-
+    
     if result:
         update_mfa_timestamp(login_manager.user)
-
+    
     return result
+
+def patch_twofactor():
+    """Apply the monkey-patch to Frappe's twofactor functions"""
+    from frappe import twofactor
+    if twofactor.confirm_otp_token.__module__ != __name__:
+        twofactor.confirm_otp_token = patched_confirm_otp_token
+        frappe.log_error("MFA Patch", "Successfully patched confirm_otp_token")
 
 
 def on_login_handler(login_manager):

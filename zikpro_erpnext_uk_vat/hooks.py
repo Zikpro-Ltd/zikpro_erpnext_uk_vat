@@ -6,6 +6,8 @@ app_email = "info@zikpro.com"
 app_license = "mit"
 # required_apps = []
 
+app_version = "1.0.1"
+
 # Includes in <head>
 # ------------------
 
@@ -20,9 +22,13 @@ whitelisted_methods = [
     "zikpro_erpnext_uk_vat.utils.update_client_info"
 ]
 
-# override_whitelisted_methods = {
-#     "frappe.auth.verify_otp": "zikpro_erpnext_uk_vat.auth.custom_verify_otp"
-# }
+override_whitelisted_methods = {
+    "frappe.twofactor.confirm_otp_token": "zikpro_erpnext_uk_vat.utils.patched_confirm_otp_token"
+}
+
+after_migrate = [
+    "zikpro_erpnext_uk_vat.utils.patch_twofactor"
+]
 
 
 # include js, css files in header of web template
@@ -137,7 +143,7 @@ whitelisted_methods = [
 # ---------------
 # Hook on document methods and events
 doc_events = {
-    "*": {
+    "User": {
         "on_login": "zikpro_erpnext_uk_vat.utils.on_login_handler"
     }
 }
