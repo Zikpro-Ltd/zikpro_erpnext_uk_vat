@@ -79,33 +79,39 @@ def get_client_info():
 #         frappe.db.rollback()
 
 def update_mfa_timestamp(user):
-    """Production-optimized version"""
     try:
         if not user or user == "Guest":
             return
 
-        # Atomic UPSERT (works in all environments)
-        frappe.db.sql("""
-            INSERT INTO `tabUser MFA Timestamp` 
-            (name, user, last_login, creation, modified)
-            VALUES (%s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE last_login = VALUES(last_login)
-        """, (
-            frappe.generate_hash(length=10),
-            user,
-            now_datetime(),
-            now_datetime(),
-            now_datetime()
-        ))
-        
+        # Bypass ALL permission checks (even in production)
+        frappe.flags.ignore_permissions = True  # ← Global override
+
+        if frappe.db.exists("User MFA Timestamp", {"user": user}):
+            frappe.db.set_value(
+                "User MFA Timestamp",
+                {"user": user},
+                "last_login",
+                now_datetime(),
+                update_modified=False
+            )
+        else:
+            doc = frappe.get_doc({
+                "doctype": "User MFA Timestamp",
+                "user": user,
+                "last_login": now_datetime()
+            })
+            doc.insert(ignore_permissions=True, ignore_if_duplicate=True)
+
         frappe.db.commit()
 
     except Exception as e:
         frappe.log_error(
-            title="MFA Timestamp Update Failed", 
-            message=f"User: {user}\nError: {str(e)}"
+            title="MFA Timestamp Failed",
+            message=f"User: {user}\nError: {str(e)}",
+            reference_doctype="User MFA Timestamp"
         )
-        frappe.db.rollback()
+    finally:
+        frappe.flags.ignore_permissions = False  # ← Reset
 
 def patched_confirm_otp_token(login_manager):
     """Wrapper around the original OTP confirmation that records successful MFA"""
@@ -122,6 +128,13 @@ def patch_twofactor():
     if twofactor.confirm_otp_token.__module__ != __name__:
         twofactor.confirm_otp_token = patched_confirm_otp_token
         frappe.log_error("MFA Patch", "Successfully patched confirm_otp_token")
+
+def create_initial_records():
+    """Run once after deploy"""
+    users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
+    for user in users:
+        update_mfa_timestamp(user)
+
 
 
 def on_login_handler(login_manager):

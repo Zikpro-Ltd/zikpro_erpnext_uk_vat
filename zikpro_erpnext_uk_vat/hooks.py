@@ -27,7 +27,8 @@ override_whitelisted_methods = {
 }
 
 after_migrate = [
-    "zikpro_erpnext_uk_vat.utils.patch_twofactor"
+    "zikpro_erpnext_uk_vat.utils.patch_twofactor",
+    "zikpro_erpnext_uk_vat.utils.create_initial_records"
 ]
 
 
