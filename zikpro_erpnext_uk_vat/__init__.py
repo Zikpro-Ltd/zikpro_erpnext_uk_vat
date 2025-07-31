@@ -5,16 +5,11 @@ from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
 from frappe.utils import now_datetime
 
 def update_last_2fa(user):
-    """Cloud-optimized version"""
+    """Update MFA timestamp for user immediately."""
     if not user or user == "Guest":
         return
-    
+
     try:
-        # Bypass permission checks properly
-        frappe.flags.in_test = True  # Bypass additional cloud checks
-        frappe.flags.ignore_permissions = True
-        
-        # Use direct SQL for reliability
         if frappe.db.exists("User MFA Timestamp", {"user": user}):
             frappe.db.set_value(
                 "User MFA Timestamp",
@@ -24,35 +19,28 @@ def update_last_2fa(user):
                 update_modified=False
             )
         else:
-            frappe.get_doc({
+            doc = frappe.get_doc({
                 "doctype": "User MFA Timestamp",
                 "user": user,
                 "last_login": now_datetime()
-            }).insert(ignore_permissions=True)
-        
+            })
+            doc.insert(ignore_permissions=True)
+
         frappe.db.commit()
-        
-        # Clear cache
         frappe.clear_cache(doctype="User MFA Timestamp")
-        
+
     except Exception as e:
         frappe.log_error("MFA Update Failed", f"User: {user}\nError: {str(e)}")
-    finally:
-        frappe.flags.in_test = False
-        frappe.flags.ignore_permissions = False
+
 
 def patched_confirm_otp_token(login_manager):
-    """Wrapper with queueing for cloud"""
     result = original_confirm_otp_token(login_manager)
     if result:
-        # Use enqueue with short timeout
-        frappe.enqueue(
-            update_last_2fa,
-            user=login_manager.user,
-            queue='short',
-            timeout=300,
-            now=frappe.conf.developer_mode  # Immediate in dev, queue in prod
-        )
+        try:
+            # Run directly (ensures DB update immediately)
+            update_last_2fa(login_manager.user)
+        except Exception as e:
+            frappe.log_error("MFA Immediate Update Failed", str(e))
     return result
 
 # Apply patch safely
