@@ -1,52 +1,59 @@
 __version__ = "0.0.1"
 
 import frappe
-from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
-from frappe.utils import now_datetime
+from .utils import patched_confirm_otp_token
+import frappe.twofactor
 
-def update_last_2fa(user):
-    """Update MFA timestamp for user immediately."""
-    if not user or user == "Guest":
-        return
+# ✅ Patch OTP confirmation on app load
+frappe.twofactor.confirm_otp_token = patched_confirm_otp_token
 
-    try:
-        if frappe.db.exists("User MFA Timestamp", {"user": user}):
-            frappe.db.set_value(
-                "User MFA Timestamp",
-                {"user": user},
-                "last_login",
-                now_datetime(),
-                update_modified=False
-            )
-        else:
-            doc = frappe.get_doc({
-                "doctype": "User MFA Timestamp",
-                "user": user,
-                "last_login": now_datetime()
-            })
-            doc.insert(ignore_permissions=True)
+# import frappe
+# from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
+# from frappe.utils import now_datetime
 
-        frappe.db.commit()
-        frappe.clear_cache(doctype="User MFA Timestamp")
+# def update_last_2fa(user):
+#     """Update MFA timestamp for user immediately."""
+#     if not user or user == "Guest":
+#         return
 
-    except Exception as e:
-        frappe.log_error("MFA Update Failed", f"User: {user}\nError: {str(e)}")
+#     try:
+#         if frappe.db.exists("User MFA Timestamp", {"user": user}):
+#             frappe.db.set_value(
+#                 "User MFA Timestamp",
+#                 {"user": user},
+#                 "last_login",
+#                 now_datetime(),
+#                 update_modified=False
+#             )
+#         else:
+#             doc = frappe.get_doc({
+#                 "doctype": "User MFA Timestamp",
+#                 "user": user,
+#                 "last_login": now_datetime()
+#             })
+#             doc.insert(ignore_permissions=True)
+
+#         frappe.db.commit()
+#         frappe.clear_cache(doctype="User MFA Timestamp")
+
+#     except Exception as e:
+#         frappe.log_error("MFA Update Failed", f"User: {user}\nError: {str(e)}")
 
 
-def patched_confirm_otp_token(login_manager):
-    result = original_confirm_otp_token(login_manager)
-    if result:
-        try:
-            # Run directly (ensures DB update immediately)
-            update_last_2fa(login_manager.user)
-        except Exception as e:
-            frappe.log_error("MFA Immediate Update Failed", str(e))
-    return result
+# def patched_confirm_otp_token(login_manager):
+#     result = original_confirm_otp_token(login_manager)
+#     if result:
+#         try:
+#             # Run directly (ensures DB update immediately)
+#             update_last_2fa(login_manager.user)
+#         except Exception as e:
+#             frappe.log_error("MFA Immediate Update Failed", str(e))
+#     return result
 
-# Apply patch safely
-if not getattr(frappe.local, 'is_2fa_patched', False):
-    frappe.twofactor.confirm_otp_token = patched_confirm_otp_token
-    frappe.local.is_2fa_patched = True  # Fixed syntax here
+# # Apply patch safely
+# if not getattr(frappe.local, 'is_2fa_patched', False):
+#     frappe.twofactor.confirm_otp_token = patched_confirm_otp_token
+#     frappe.local.is_2fa_patched = True  # Fixed syntax here
 # __version__ = "0.0.1"
 
 # import frappe

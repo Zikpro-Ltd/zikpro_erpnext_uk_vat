@@ -2,7 +2,7 @@ import frappe
 import time
 from datetime import datetime
 from frappe.utils import now_datetime
-from frappe.twofactor import confirm_otp_token
+from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
 
 @frappe.whitelist(allow_guest=False)
 def update_client_info(screen_width, screen_height, color_depth, pixel_ratio, timezone_offset):
@@ -23,16 +23,16 @@ def update_client_info(screen_width, screen_height, color_depth, pixel_ratio, ti
         frappe.log_error("Client Info Update Failed", str(e))
         return {"success": False}
 
-def on_login_handler(login_manager):
-    """Handles login-related tasks: set default client info + store last 2FA login."""
-    try:
-        # 1️⃣ Set default client info
-        set_default_client_info()
+# def on_login_handler(login_manager):
+#     """Handles login-related tasks: set default client info + store last 2FA login."""
+#     try:
+#         # 1️⃣ Set default client info
+#         set_default_client_info()
 
-        frappe.log_error("DEBUG", f"on_login_handler executed for {frappe.session.user}")
+#         frappe.log_error("DEBUG", f"on_login_handler executed for {frappe.session.user}")
 
-    except Exception:
-        frappe.log_error("on_login_handler Error", frappe.get_traceback())
+#     except Exception:
+#         frappe.log_error("on_login_handler Error", frappe.get_traceback())
 
 def set_default_client_info(doc, method):
     """Set default values if client info not available"""
@@ -49,4 +49,50 @@ def set_default_client_info(doc, method):
 def get_client_info():
     """Retrieve stored client information"""
     return frappe.session.data.get('client_info', {})
+
+def update_mfa_timestamp(user):
+    """Create/Update MFA timestamp for the logged-in user."""
+    try:
+        if not user or user == "Guest":
+            return
+
+        if frappe.db.exists("User MFA Timestamp", {"user": user}):
+            frappe.db.set_value(
+                "User MFA Timestamp",
+                {"user": user},
+                "last_login",
+                now_datetime(),
+                update_modified=False,
+            )
+        else:
+            frappe.get_doc({
+                "doctype": "User MFA Timestamp",
+                "user": user,
+                "last_login": now_datetime(),
+            }).insert(ignore_permissions=True)
+
+        frappe.db.commit()
+
+    except Exception as e:
+        frappe.log_error("MFA Timestamp Update Failed", str(e))
+
+def patched_confirm_otp_token(login_manager):
+    """Wrapper that updates MFA timestamp after successful OTP verification."""
+    result = original_confirm_otp_token(login_manager)
+    if result:  # OTP success
+        update_mfa_timestamp(login_manager.user)
+    return result
+
+def on_login_handler(login_manager):
+    """Handles login-related tasks: store client info + MFA timestamp."""
+    try:
+        # ✅ 1) Set default client info
+        set_default_client_info()
+
+        # ✅ 2) Update MFA timestamp
+        # if frappe.session.data.get("otp_verified"):
+        #     update_mfa_timestamp(login_manager.user)
+
+    except Exception:
+        frappe.log_error("on_login_handler Error", frappe.get_traceback())
 
