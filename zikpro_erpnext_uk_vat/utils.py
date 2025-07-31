@@ -50,11 +50,18 @@ def get_client_info():
     """Retrieve stored client information"""
     return frappe.session.data.get('client_info', {})
 
+import frappe
+from frappe.utils import now_datetime
+from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
+
+
 def update_mfa_timestamp(user):
-    """Create/Update MFA timestamp for the logged-in user."""
     try:
         if not user or user == "Guest":
+            frappe.log_error("DEBUG", "Skipped MFA update: Guest user")
             return
+
+        frappe.log_error("DEBUG", f"Updating MFA timestamp for {user}")
 
         if frappe.db.exists("User MFA Timestamp", {"user": user}):
             frappe.db.set_value(
@@ -62,26 +69,32 @@ def update_mfa_timestamp(user):
                 {"user": user},
                 "last_login",
                 now_datetime(),
-                update_modified=False,
+                update_modified=False
             )
         else:
             frappe.get_doc({
                 "doctype": "User MFA Timestamp",
                 "user": user,
-                "last_login": now_datetime(),
+                "last_login": now_datetime()
             }).insert(ignore_permissions=True)
 
         frappe.db.commit()
+        frappe.log_error("DEBUG", f"MFA timestamp updated for {user}")
 
     except Exception as e:
         frappe.log_error("MFA Timestamp Update Failed", str(e))
 
+
 def patched_confirm_otp_token(login_manager):
-    """Wrapper that updates MFA timestamp after successful OTP verification."""
+    frappe.log_error("DEBUG", f"patched_confirm_otp_token executed for {login_manager.user}")
     result = original_confirm_otp_token(login_manager)
-    if result:  # OTP success
+    frappe.log_error("DEBUG", f"OTP verification result: {result}")
+
+    if result:
         update_mfa_timestamp(login_manager.user)
+
     return result
+
 
 def on_login_handler(login_manager):
     """Handles login-related tasks: store client info + MFA timestamp."""

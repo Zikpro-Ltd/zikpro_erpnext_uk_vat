@@ -4,8 +4,15 @@ import frappe
 from .utils import patched_confirm_otp_token
 import frappe.twofactor
 
-# ✅ Patch OTP confirmation on app load
-frappe.twofactor.confirm_otp_token = patched_confirm_otp_token
+frappe.log_error("DEBUG", "zikpro_erpnext_uk_vat: __init__.py loaded")  # ✅ Debug
+
+# ✅ Patch OTP confirmation
+try:
+    frappe.twofactor.confirm_otp_token = patched_confirm_otp_token
+    frappe.log_error("DEBUG", "confirm_otp_token successfully patched")
+except Exception as e:
+    frappe.log_error("DEBUG", f"Failed to patch confirm_otp_token: {str(e)}")
+
 
 # import frappe
 # from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
