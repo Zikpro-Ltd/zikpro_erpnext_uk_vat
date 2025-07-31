@@ -1050,8 +1050,8 @@ def get_mfa_header():
         # last_2fa = frappe.db.get_value("User", user, "last_2fa_login")
         # Get from our custom doctype instead of User
         last_2fa = frappe.db.get_value(
-            "Last 2FA Login", 
-            {"user": user}, 
+            "User MFA Timestamp",
+            {"user": user},
             "last_login"
         )
         if not last_2fa:
