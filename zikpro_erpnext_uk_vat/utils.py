@@ -50,63 +50,51 @@ def get_client_info():
     """Retrieve stored client information"""
     return frappe.session.data.get('client_info', {})
 
-
-# MFA Timestamp Functions
-# def update_mfa_timestamp(user):
-#     """Update the MFA timestamp for the given user"""
-#     try:
-#         if not user or user == "Guest":
-#             return
-
-#         # Using direct SQL for better performance in both local and cloud
-#         if frappe.db.exists("User MFA Timestamp", {"user": user}):
-#             frappe.db.sql("""
-#                 UPDATE `tabUser MFA Timestamp`
-#                 SET last_login = %s
-#                 WHERE user = %s
-#             """, (now_datetime(), user))
-#         else:
-#             frappe.get_doc({
-#                 "doctype": "User MFA Timestamp",
-#                 "user": user,
-#                 "last_login": now_datetime()
-#             }).insert(ignore_permissions=True, ignore_if_duplicate=True)
-
-#         frappe.db.commit()  # Explicit commit for immediate update
-
-#     except Exception as e:
-#         frappe.log_error(title="MFA Timestamp Update Failed", message=str(e))
-#         frappe.db.rollback()
-
 def update_mfa_timestamp(user):
     try:
         if not user or user == "Guest":
             return
 
         # Bypass ALL permission checks (even in production)
-        frappe.flags.ignore_permissions = True  # ← Global override
+        # frappe.flags.ignore_permissions = True  # ← Global override
 
-        if frappe.db.exists("User MFA Timestamp", {"user": user}):
-            frappe.db.set_value(
-                "User MFA Timestamp",
-                {"user": user},
-                "last_login",
-                now_datetime(),
-                update_modified=False
-            )
-        else:
-            doc = frappe.get_doc({
+        # if frappe.db.exists("User MFA Timestamp", {"user": user}):
+        #     frappe.db.set_value(
+        #         "User MFA Timestamp",
+        #         {"user": user},
+        #         "last_login",
+        #         now_datetime(),
+        #         update_modified=False
+        #     )
+        # else:
+        #     doc = frappe.get_doc({
+        #         "doctype": "User MFA Timestamp",
+        #         "user": user,
+        #         "last_login": now_datetime()
+        #     })
+        #     doc.insert(ignore_permissions=True, ignore_if_duplicate=True)
+
+        # Force immediate update with SQL
+        frappe.db.sql("""
+            UPDATE `tabUser MFA Timestamp`
+            SET last_login = %s
+            WHERE user = %s
+        """, (now_datetime(), user))
+        
+        # Verify update
+        if not frappe.db.affected_rows():
+            # Insert if missing (fallback)
+            frappe.get_doc({
                 "doctype": "User MFA Timestamp",
                 "user": user,
                 "last_login": now_datetime()
-            })
-            doc.insert(ignore_permissions=True, ignore_if_duplicate=True)
+            }).insert(ignore_permissions=True)
 
         frappe.db.commit()
 
     except Exception as e:
         frappe.log_error(
-            title="MFA Timestamp Failed",
+            title="MFA Update Failed",
             message=f"User: {user}\nError: {str(e)}",
             reference_doctype="User MFA Timestamp"
         )
@@ -117,7 +105,9 @@ def patched_confirm_otp_token(login_manager):
     """Wrapper around the original OTP confirmation that records successful MFA"""
     result = original_confirm_otp_token(login_manager)
     
-    if result:
+    if result and login_manager.user:
+        # Re-import to ensure fresh reference
+        from zikpro_erpnext_uk_vat.utils import update_mfa_timestamp
         update_mfa_timestamp(login_manager.user)
     
     return result
@@ -141,10 +131,6 @@ def on_login_handler(login_manager):
     try:
         # ✅ 1) Set default client info
         set_default_client_info()
-
-        # ✅ 2) Update MFA timestamp
-        # if frappe.session.data.get("otp_verified"):
-        #     update_mfa_timestamp(login_manager.user)
 
     except Exception:
         frappe.log_error("on_login_handler Error", frappe.get_traceback())
