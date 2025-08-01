@@ -31,7 +31,6 @@ after_migrate = [
     "zikpro_erpnext_uk_vat.utils.create_initial_records"
 ]
 
-# Add realtime handlers
 socketio_handlers = [
     {
         "event": "reload_twofactor_patch",

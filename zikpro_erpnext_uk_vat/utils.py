@@ -59,7 +59,6 @@ def update_mfa_timestamp(user):
 
         timestamp = frappe.utils.now_datetime()
         
-        # 1. STRICT USER-SPECIFIC UPDATE
         frappe.db.sql("""
             INSERT INTO `tabUser MFA Timestamp` 
             (name, user, last_login, creation, modified)
@@ -159,8 +158,11 @@ def on_login_handler(login_manager):
     except Exception:
         frappe.log_error("on_login_handler Error", frappe.get_traceback())
 
-def clear_cache_handler(data):
-    """Forces cache clearance across workers"""
-    frappe.clear_cache(doctype="User MFA Timestamp")
-    frappe.db.commit()
+# def clear_cache_handler(data):
+#     """Forces cache clearance across workers"""
+#     frappe.clear_cache(doctype="User MFA Timestamp")
+#     frappe.db.commit()
 
+def reload_patch(data):
+    """Force patch reload on all workers"""
+    patch_twofactor()
