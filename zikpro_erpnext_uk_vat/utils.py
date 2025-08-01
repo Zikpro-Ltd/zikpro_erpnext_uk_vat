@@ -136,7 +136,6 @@ def create_initial_records():
         update_mfa_timestamp(user)
 
 
-
 def on_login_handler(login_manager):
     """Handles login-related tasks: store client info + MFA timestamp."""
     try:
