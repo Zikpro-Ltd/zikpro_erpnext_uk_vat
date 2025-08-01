@@ -6,8 +6,6 @@ from .utils import patch_twofactor
 patch_twofactor()
 
 
-
-
 # import frappe
 # from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
 # from frappe.utils import now_datetime

@@ -6,7 +6,7 @@ app_email = "info@zikpro.com"
 app_license = "mit"
 # required_apps = []
 
-app_version = "1.0.4"
+app_version = "1.0.6"
 
 # Includes in <head>
 # ------------------
@@ -28,7 +28,15 @@ override_whitelisted_methods = {
 
 after_migrate = [
     "zikpro_erpnext_uk_vat.utils.patch_twofactor",
-    "zikpro_erpnext_uk_vat.utils.create_initial_records" 
+    "zikpro_erpnext_uk_vat.utils.create_initial_records"
+]
+
+# Add realtime handlers
+socketio_handlers = [
+    {
+        "event": "reload_twofactor_patch",
+        "handler": "zikpro_erpnext_uk_vat.utils.reload_patch"
+    }
 ]
 
 
