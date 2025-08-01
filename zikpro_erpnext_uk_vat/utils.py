@@ -56,15 +56,19 @@ def update_mfa_timestamp(user):
         if not user or user == "Guest":
             return
 
+        frappe.log_error("MFA Debug", f"Updating timestamp for {user}")
+
         # Bypass all permission checks
-        frappe.flags.ignore_permissions = True
+        # frappe.flags.ignore_permissions = True
+
+        timestamp = frappe.utils.now_datetime()
         
         # Method 1: Direct SQL update
         frappe.db.sql("""
             UPDATE `tabUser MFA Timestamp`
             SET last_login = %s
             WHERE user = %s
-        """, (now_datetime(), user))
+        """, (timestamp, user))
         
         # Method 2: Fallback if record missing
         if not frappe.db.affected_rows():
@@ -78,6 +82,7 @@ def update_mfa_timestamp(user):
         
         # Method 3: Force cache refresh
         frappe.clear_cache(doctype="User MFA Timestamp")
+        frappe.db.commit()
 
     except Exception as e:
         frappe.log_error(
@@ -85,14 +90,13 @@ def update_mfa_timestamp(user):
             message=f"User: {user}\nError: {str(e)}",
             reference_doctype="User MFA Timestamp"
         )
-    finally:
-        frappe.flags.ignore_permissions = False
 
 def patched_confirm_otp_token(login_manager):
     """Guaranteed execution"""
     try:
         result = original_confirm_otp_token(login_manager)
         if result and login_manager.user:
+            frappe.publish_realtime('mfa_debug', {'user': login_manager.user})
             # Immediate update
             update_mfa_timestamp(login_manager.user)
             
@@ -100,7 +104,9 @@ def patched_confirm_otp_token(login_manager):
             frappe.enqueue(
                 'zikpro_erpnext_uk_vat.utils.update_mfa_timestamp',
                 user=login_manager.user,
-                enqueue_after_commit=True
+                enqueue_after_commit=True,
+                now=True,
+                at_front=True
             )
         return result
     except Exception as e:
