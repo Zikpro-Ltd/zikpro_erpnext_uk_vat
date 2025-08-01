@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 from frappe.utils import now_datetime
 from frappe.twofactor import confirm_otp_token as original_confirm_otp_token
+from frappe import publish_realtime
 
 @frappe.whitelist(allow_guest=False)
 def update_client_info(screen_width, screen_height, color_depth, pixel_ratio, timezone_offset):
@@ -51,43 +52,42 @@ def get_client_info():
     return frappe.session.data.get('client_info', {})
 
 def update_mfa_timestamp(user):
-    """Atomic update that always works"""
+    """100% reliable timestamp update"""
     try:
         if not user or user == "Guest":
             return
 
-        frappe.log_error("MFA Debug", f"Updating timestamp for {user}")
-
-        # Bypass all permission checks
-        # frappe.flags.ignore_permissions = True
-
-        timestamp = frappe.utils.now_datetime()
+        timestamp = now_datetime()
         
-        # Method 1: Direct SQL update
+        # METHOD 1: Atomic UPSERT (works in all cases)
         frappe.db.sql("""
-            UPDATE `tabUser MFA Timestamp`
-            SET last_login = %s
-            WHERE user = %s
-        """, (timestamp, user))
-        
-        # Method 2: Fallback if record missing
-        if not frappe.db.affected_rows():
-            frappe.get_doc({
-                "doctype": "User MFA Timestamp",
-                "user": user,
-                "last_login": now_datetime()
-            }).insert(ignore_permissions=True)
+            INSERT INTO `tabUser MFA Timestamp` 
+            (name, user, last_login, creation, modified)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE last_login = VALUES(last_login)
+        """, (
+            frappe.generate_hash(length=10),
+            user,
+            timestamp,
+            timestamp,
+            timestamp
+        ))
         
         frappe.db.commit()
         
-        # Method 3: Force cache refresh
+        # METHOD 2: Force cache clear
         frappe.clear_cache(doctype="User MFA Timestamp")
-        frappe.db.commit()
+        
+        # DEBUG: Real-time confirmation
+        publish_realtime('mfa_update', {
+            'user': user,
+            'timestamp': timestamp
+        })
 
     except Exception as e:
         frappe.log_error(
             title="MFA Update Failed",
-            message=f"User: {user}\nError: {str(e)}",
+            message=f"User: {user}\nError: {str(e)}\nTraceback: {frappe.get_traceback()}",
             reference_doctype="User MFA Timestamp"
         )
 
@@ -110,7 +110,7 @@ def patched_confirm_otp_token(login_manager):
             )
         return result
     except Exception as e:
-        frappe.log_error("OTP Patch Runtime Error", str(e))
+        frappe.log_error("OTP Patch Error", str(e))
         raise
 
 # def patch_twofactor():
@@ -126,6 +126,11 @@ def patch_twofactor():
     if not hasattr(twofactor, '_original_confirm_otp_token'):
         twofactor._original_confirm_otp_token = twofactor.confirm_otp_token
         twofactor.confirm_otp_token = patched_confirm_otp_token
+
+        publish_realtime('mfa_patch_applied', {
+            'status': 'success',
+            'time': now_datetime()
+        })
 
 def create_initial_records():
     """Run once after deploy"""
