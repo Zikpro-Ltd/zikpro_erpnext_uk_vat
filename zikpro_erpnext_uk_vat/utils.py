@@ -67,7 +67,7 @@ def update_mfa_timestamp(user):
             ON DUPLICATE KEY UPDATE 
                 last_login = VALUES(last_login),
                 modified = VALUES(modified)
-            WHERE user = %s  # ← CRITICAL: Double user filter
+            WHERE user = %s
         """, (
             frappe.generate_hash(length=10),
             user,
