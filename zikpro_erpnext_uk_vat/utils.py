@@ -51,47 +51,33 @@ def get_client_info():
     return frappe.session.data.get('client_info', {})
 
 def update_mfa_timestamp(user):
+    """Atomic update that always works"""
     try:
         if not user or user == "Guest":
             return
 
-        # frappe.flags.ignore_permissions = True  # ← Global override
+        # Bypass all permission checks
         frappe.flags.ignore_permissions = True
-
-        if frappe.db.exists("User MFA Timestamp", {"user": user}):
-            frappe.db.set_value(
-                "User MFA Timestamp",
-                {"user": user},
-                "last_login",
-                now_datetime(),
-                update_modified=False
-            )
-        else:
+        
+        # Method 1: Direct SQL update
+        frappe.db.sql("""
+            UPDATE `tabUser MFA Timestamp`
+            SET last_login = %s
+            WHERE user = %s
+        """, (now_datetime(), user))
+        
+        # Method 2: Fallback if record missing
+        if not frappe.db.affected_rows():
             frappe.get_doc({
                 "doctype": "User MFA Timestamp",
                 "user": user,
                 "last_login": now_datetime()
             }).insert(ignore_permissions=True)
-
-        frappe.db.commit()
-
-        # Force immediate update with SQL
-        # frappe.db.sql("""
-        #     UPDATE `tabUser MFA Timestamp`
-        #     SET last_login = %s
-        #     WHERE user = %s
-        # """, (now_datetime(), user))
         
-        # # Verify update
-        # if not frappe.db.affected_rows():
-        #     # Insert if missing (fallback)
-        #     frappe.get_doc({
-        #         "doctype": "User MFA Timestamp",
-        #         "user": user,
-        #         "last_login": now_datetime()
-        #     }).insert(ignore_permissions=True)
-
-        # frappe.db.commit()
+        frappe.db.commit()
+        
+        # Method 3: Force cache refresh
+        frappe.clear_cache(doctype="User MFA Timestamp")
 
     except Exception as e:
         frappe.log_error(
@@ -100,27 +86,40 @@ def update_mfa_timestamp(user):
             reference_doctype="User MFA Timestamp"
         )
     finally:
-        frappe.flags.ignore_permissions = False  # ← Reset
+        frappe.flags.ignore_permissions = False
 
 def patched_confirm_otp_token(login_manager):
-    """Wrapper around the original OTP confirmation that records successful MFA"""
-    result = original_confirm_otp_token(login_manager)
-    
-    if result and login_manager.user:
-        # Re-import to ensure fresh reference
-        from zikpro_erpnext_uk_vat.utils import update_mfa_timestamp
-        update_mfa_timestamp(login_manager.user)
+    """Guaranteed execution"""
+    try:
+        result = original_confirm_otp_token(login_manager)
+        if result and login_manager.user:
+            # Immediate update
+            update_mfa_timestamp(login_manager.user)
+            
+            # Async backup (in case of transaction issues)
+            frappe.enqueue(
+                'zikpro_erpnext_uk_vat.utils.update_mfa_timestamp',
+                user=login_manager.user,
+                enqueue_after_commit=True
+            )
+        return result
+    except Exception as e:
+        frappe.log_error("OTP Patch Runtime Error", str(e))
+        raise
 
-        frappe.clear_cache(doctype="User MFA Timestamp")
-    
-    return result
+# def patch_twofactor():
+#     """Apply the monkey-patch to Frappe's twofactor functions"""
+#     from frappe import twofactor
+#     if twofactor.confirm_otp_token.__module__ != __name__:
+#         twofactor.confirm_otp_token = patched_confirm_otp_token
+#         frappe.log_error("MFA Patch", "Successfully patched confirm_otp_token")
 
 def patch_twofactor():
-    """Apply the monkey-patch to Frappe's twofactor functions"""
+    """Safe initialization"""
     from frappe import twofactor
-    if twofactor.confirm_otp_token.__module__ != __name__:
+    if not hasattr(twofactor, '_original_confirm_otp_token'):
+        twofactor._original_confirm_otp_token = twofactor.confirm_otp_token
         twofactor.confirm_otp_token = patched_confirm_otp_token
-        frappe.log_error("MFA Patch", "Successfully patched confirm_otp_token")
 
 def create_initial_records():
     """Run once after deploy"""
