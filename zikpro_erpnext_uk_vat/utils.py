@@ -52,39 +52,49 @@ def get_client_info():
     return frappe.session.data.get('client_info', {})
 
 def update_mfa_timestamp(user):
-    """Updates ONLY the specified user's timestamp"""
+    """Frappe-version-proof update for single user"""
     try:
         if not user or user == "Guest":
             return
 
         timestamp = frappe.utils.now_datetime()
         
+        # METHOD 1: Targeted UPDATE (only affects specified user)
         frappe.db.sql("""
-            INSERT INTO `tabUser MFA Timestamp` 
-            (name, user, last_login, creation, modified)
-            VALUES (%s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE 
-                last_login = VALUES(last_login),
-                modified = VALUES(modified)
+            UPDATE `tabUser MFA Timestamp`
+            SET last_login = %s,
+                modified = %s
             WHERE user = %s
-        """, (
-            frappe.generate_hash(length=10),
-            user,
-            timestamp,
-            timestamp,
-            timestamp,
-            user  # Repeated for WHERE clause
-        ))
+        """, (timestamp, timestamp, user))
         
-        # 2. VERIFY ONLY 1 ROW AFFECTED
-        updated_count = frappe.db.sql("SELECT ROW_COUNT()")[0][0]
+        # METHOD 2: Insert if record doesn't exist
+        if frappe.db.sql("SELECT ROW_COUNT()")[0][0] == 0:
+            frappe.db.sql("""
+                INSERT INTO `tabUser MFA Timestamp`
+                (name, user, last_login, creation, modified)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                frappe.generate_hash(length=10),
+                user,
+                timestamp,
+                timestamp,
+                timestamp
+            ))
+        
+        # ALTERNATIVE ROW COUNT VERIFICATION
+        updated_count = frappe.db.sql("""
+            SELECT COUNT(*) 
+            FROM `tabUser MFA Timestamp` 
+            WHERE user=%s AND last_login=%s
+        """, (user, timestamp))[0][0]
+        
         if updated_count != 1:
-            raise ValueError(f"Updated {updated_count} rows (expected 1)")
-        
+            raise ValueError(f"Verification failed: {updated_count} records updated")
+
         frappe.db.commit()
         
-        # 3. TARGETED CACHE CLEAR
-        frappe.clear_cache(doctype="User MFA Timestamp", user=user)
+        # Your existing cache clearing
+        frappe.clear_cache(doctype="User MFA Timestamp")
         publish_realtime('user_mfa_updated', {"user": user})
 
     except Exception as e:
@@ -94,7 +104,7 @@ def update_mfa_timestamp(user):
             reference_doctype="User MFA Timestamp"
         )
         raise
-
+        
 def patched_confirm_otp_token(login_manager):
     """Guaranteed execution"""
     try:
