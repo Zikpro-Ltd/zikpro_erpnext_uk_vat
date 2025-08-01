@@ -55,35 +55,18 @@ def update_mfa_timestamp(user):
         if not user or user == "Guest":
             return
 
-        # Bypass ALL permission checks (even in production)
         # frappe.flags.ignore_permissions = True  # ← Global override
+        frappe.flags.ignore_permissions = True
 
-        # if frappe.db.exists("User MFA Timestamp", {"user": user}):
-        #     frappe.db.set_value(
-        #         "User MFA Timestamp",
-        #         {"user": user},
-        #         "last_login",
-        #         now_datetime(),
-        #         update_modified=False
-        #     )
-        # else:
-        #     doc = frappe.get_doc({
-        #         "doctype": "User MFA Timestamp",
-        #         "user": user,
-        #         "last_login": now_datetime()
-        #     })
-        #     doc.insert(ignore_permissions=True, ignore_if_duplicate=True)
-
-        # Force immediate update with SQL
-        frappe.db.sql("""
-            UPDATE `tabUser MFA Timestamp`
-            SET last_login = %s
-            WHERE user = %s
-        """, (now_datetime(), user))
-        
-        # Verify update
-        if not frappe.db.affected_rows():
-            # Insert if missing (fallback)
+        if frappe.db.exists("User MFA Timestamp", {"user": user}):
+            frappe.db.set_value(
+                "User MFA Timestamp",
+                {"user": user},
+                "last_login",
+                now_datetime(),
+                update_modified=False
+            )
+        else:
             frappe.get_doc({
                 "doctype": "User MFA Timestamp",
                 "user": user,
@@ -91,6 +74,24 @@ def update_mfa_timestamp(user):
             }).insert(ignore_permissions=True)
 
         frappe.db.commit()
+
+        # Force immediate update with SQL
+        # frappe.db.sql("""
+        #     UPDATE `tabUser MFA Timestamp`
+        #     SET last_login = %s
+        #     WHERE user = %s
+        # """, (now_datetime(), user))
+        
+        # # Verify update
+        # if not frappe.db.affected_rows():
+        #     # Insert if missing (fallback)
+        #     frappe.get_doc({
+        #         "doctype": "User MFA Timestamp",
+        #         "user": user,
+        #         "last_login": now_datetime()
+        #     }).insert(ignore_permissions=True)
+
+        # frappe.db.commit()
 
     except Exception as e:
         frappe.log_error(
@@ -109,6 +110,8 @@ def patched_confirm_otp_token(login_manager):
         # Re-import to ensure fresh reference
         from zikpro_erpnext_uk_vat.utils import update_mfa_timestamp
         update_mfa_timestamp(login_manager.user)
+
+        frappe.clear_cache(doctype="User MFA Timestamp")
     
     return result
 
