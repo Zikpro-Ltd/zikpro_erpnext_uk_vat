@@ -113,13 +113,6 @@ def patched_confirm_otp_token(login_manager):
         frappe.log_error("OTP Patch Error", str(e))
         raise
 
-# def patch_twofactor():
-#     """Apply the monkey-patch to Frappe's twofactor functions"""
-#     from frappe import twofactor
-#     if twofactor.confirm_otp_token.__module__ != __name__:
-#         twofactor.confirm_otp_token = patched_confirm_otp_token
-#         frappe.log_error("MFA Patch", "Successfully patched confirm_otp_token")
-
 def patch_twofactor():
     """Safe initialization"""
     from frappe import twofactor
