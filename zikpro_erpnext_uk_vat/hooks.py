@@ -6,7 +6,7 @@ app_email = "info@zikpro.com"
 app_license = "mit"
 # required_apps = []
 
-app_version = "2.1.0"
+app_version = "2.1.1"
 
 # Includes in <head>
 # ------------------
@@ -30,7 +30,7 @@ override_whitelisted_methods = {
 }
 
 after_migrate = [
-    "zikpro_erpnext_uk_vat.utils.patch_twofactor"
+    "zikpro_erpnext_uk_vat.utils.patch_login_manager"
 ]
 
 after_install = "zikpro_erpnext_uk_vat.utils.create_initial_records"
@@ -158,7 +158,7 @@ socketio_handlers = [
 # Hook on document methods and events
 doc_events = {
     "User": {
-        "on_login": "zikpro_erpnext_uk_vat.utils.on_login_handler"
+        "on_login": "zikpro_erpnext_uk_vat.utils.set_default_client_info"
     }
 }
 
