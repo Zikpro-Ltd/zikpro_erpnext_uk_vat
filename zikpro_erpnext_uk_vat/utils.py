@@ -208,36 +208,54 @@ def clear_user_cache(data):
 
 
 
-# def on_login_handler(login_manager):
-#     """Handles login-related tasks: store client info + MFA timestamp."""
-#     try:
-#         # ✅ 1) Set default client info
-#         set_default_client_info()
-
-#     except Exception:
-#         frappe.log_error("on_login_handler Error", frappe.get_traceback())
-
 def on_login_handler(login_manager):
+    """Handles login-related tasks: store client info + MFA timestamp."""
     try:
-        # Existing logic
+        # ✅ 1) Set default client info
         set_default_client_info()
 
-        # Ensure patch is applied (safe call)
-        patch_twofactor()
-
-        # ✅ NEW: Update MFA timestamp if MFA is enabled
-        is_mfa_enabled = frappe.db.get_value("User", login_manager.user, "mfa_enabled")
-        frappe.log_error("DEBUG", f"Login for {login_manager.user}, MFA Enabled={is_mfa_enabled}")
-
-        if is_mfa_enabled:
-            update_mfa_timestamp(login_manager.user)
-
     except Exception:
-        frappe.log_error("on_login_handler Error", get_traceback())
+        frappe.log_error("on_login_handler Error", frappe.get_traceback())
+
+# def on_login_handler(login_manager):
+#     try:
+#         # Existing logic
+#         set_default_client_info()
+
+#         # Ensure patch is applied (safe call)
+#         patch_twofactor()
+
+#         # ✅ NEW: Update MFA timestamp if MFA is enabled
+#         is_mfa_enabled = frappe.db.get_value("User", login_manager.user, "mfa_enabled")
+#         frappe.log_error("DEBUG", f"Login for {login_manager.user}, MFA Enabled={is_mfa_enabled}")
+
+#         if is_mfa_enabled:
+#             update_mfa_timestamp(login_manager.user)
+
+#     except Exception:
+#         frappe.log_error("on_login_handler Error", get_traceback())
 
 
 # def clear_cache_handler(data):
 #     """Forces cache clearance across workers"""
 #     frappe.clear_cache(doctype="User MFA Timestamp")
 #     frappe.db.commit()
+
+@frappe.whitelist(allow_guest=True)
+def custom_login():
+    from frappe.auth import LoginManager
+
+    login_manager = LoginManager()
+    login_manager.authenticate()
+    login_manager.post_login()
+
+    frappe.log_error("DEBUG", f"Custom Login executed for {login_manager.user}")
+
+    if login_manager.user and frappe.db.get_value("User", login_manager.user, "mfa_enabled"):
+        frappe.log_error("DEBUG", f"✅ MFA Enabled for {login_manager.user}, updating timestamp")
+        update_mfa_timestamp(login_manager.user)
+    else:
+        frappe.log_error("DEBUG", f"❌ MFA Disabled for {login_manager.user}, skipping update")
+
+    frappe.local.response["message"] = "Logged In"
 

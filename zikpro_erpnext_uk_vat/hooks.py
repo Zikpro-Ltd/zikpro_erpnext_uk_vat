@@ -6,7 +6,7 @@ app_email = "info@zikpro.com"
 app_license = "mit"
 # required_apps = []
 
-app_version = "1.2.8"
+app_version = "2.1.0"
 
 # Includes in <head>
 # ------------------
@@ -25,6 +25,9 @@ whitelisted_methods = [
 # override_whitelisted_methods = {
 #     "frappe.twofactor.confirm_otp_token": "zikpro_erpnext_uk_vat.utils.patched_confirm_otp_token"
 # }
+override_whitelisted_methods = {
+    "login": "zikpro_erpnext_uk_vat.utils.custom_login"
+}
 
 after_migrate = [
     "zikpro_erpnext_uk_vat.utils.patch_twofactor"
