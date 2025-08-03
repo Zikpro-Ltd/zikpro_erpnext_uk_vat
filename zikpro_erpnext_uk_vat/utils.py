@@ -133,7 +133,7 @@ def patched_confirm_otp_token(login_manager):
 
 def verify_mfa_update(user):
     try:
-        frappe.log_error("DEBUG", f"patched_confirm_otp_token executed for user {login_manager.user}")
+        frappe.log_error("DEBUG", f"patched_confirm_otp_token executed for user {user}")
         timestamp = now_datetime()
         current = frappe.get_value("User MFA Timestamp", {"user": user}, "last_login")
 

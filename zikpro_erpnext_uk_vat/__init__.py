@@ -1,9 +1,9 @@
 __version__ = "0.0.1"
 
-from .utils import patch_twofactor
+# from .utils import patch_twofactor
 
-# Apply patches when module is imported
-patch_twofactor()
+# # Apply patches when module is imported
+# patch_twofactor()
 
 
 # import frappe
