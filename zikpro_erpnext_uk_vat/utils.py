@@ -59,18 +59,16 @@ def update_mfa_timestamp(user):
 
         timestamp = frappe.utils.now_datetime()
         
-        # 1. Check if record exists first
-        exists = frappe.db.exists("User MFA Timestamp", {"user": user})
+        # 1. STRICT user-specific update
+        frappe.db.sql("""
+            UPDATE `tabUser MFA Timestamp`
+            SET last_login = %s,
+                modified = %s
+            WHERE user = %s
+        """, (timestamp, timestamp, user))
         
-        # 2. Targeted update/insert
-        if exists:
-            frappe.db.sql("""
-                UPDATE `tabUser MFA Timestamp`
-                SET last_login = %s,
-                    modified = %s
-                WHERE user = %s
-            """, (timestamp, timestamp, user))
-        else:
+        # 2. Insert if record doesn't exist (only for this user)
+        if frappe.db.sql("SELECT ROW_COUNT()")[0][0] == 0:
             frappe.db.sql("""
                 INSERT INTO `tabUser MFA Timestamp`
                 (name, user, last_login, creation, modified)
@@ -83,41 +81,42 @@ def update_mfa_timestamp(user):
                 timestamp
             ))
         
-        # 3. Verify update
-        updated_time = frappe.db.sql("""
-            SELECT last_login FROM `tabUser MFA Timestamp`
-            WHERE user = %s
-        """, (user,))[0][0]
+        # 3. Verify ONLY this user was updated
+        updated_user = frappe.db.sql("""
+            SELECT user FROM `tabUser MFA Timestamp`
+            WHERE last_login = %s
+            ORDER BY modified DESC LIMIT 1
+        """, (timestamp,))[0][0]
         
-        if updated_time != timestamp:
-            raise ValueError(f"Update failed for {user}")
-            
+        if updated_user != user:
+            raise ValueError(f"Wrong user updated! Expected {user}, got {updated_user}")
+        
         frappe.db.commit()
         
-        # 4. Targeted cache clearance
+        # 4. Force cache refresh for this user only
         frappe.clear_cache(doctype="User MFA Timestamp", user=user)
-        publish_realtime('mfa_updated', {'user': user})
+        publish_realtime('user_mfa_updated', {'user': user})
 
     except Exception as e:
         frappe.log_error(
             title="MFA Update Failed",
-            message=f"User: {user}\nError: {str(e)}\nQuery: {frappe.db.last_query}",
+            message=f"User: {user}\nError: {str(e)}\nSQL: {frappe.db.last_query}",
             reference_doctype="User MFA Timestamp"
         )
         raise
         
 def patched_confirm_otp_token(login_manager):
-    """Cluster-safe patch"""
+    """Worker-safe patch with verification"""
     try:
         result = original_confirm_otp_token(login_manager)
         
         if result and login_manager.user:
             user = login_manager.user
             
-            # Immediate synchronous update
+            # Immediate update
             update_mfa_timestamp(user)
             
-            # Async verification
+            # Async backup verification
             frappe.enqueue(
                 'zikpro_erpnext_uk_vat.utils.verify_mfa_update',
                 user=user,
@@ -129,11 +128,11 @@ def patched_confirm_otp_token(login_manager):
         return result
         
     except Exception as e:
-        frappe.log_error("OTP Verification Error", str(e))
+        frappe.log_error("OTP Patch Error", str(e))
         raise
 
 def verify_mfa_update(user):
-    """Double-checks the update persisted"""
+    """Ensures update persisted across all workers"""
     try:
         current = frappe.get_value(
             "User MFA Timestamp", 
