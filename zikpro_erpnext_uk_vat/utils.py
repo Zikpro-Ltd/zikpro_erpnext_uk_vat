@@ -52,14 +52,25 @@ def get_client_info():
     return frappe.session.data.get('client_info', {})
 
 def log_debug(message, user=None):
-    """Standardized debug logging"""
+    """Standardized debug logging to Error Log"""
     version = frappe.get_module(__name__).app_version
-    message = f"[v{version}] {message}"
     timestamp = frappe.utils.now_datetime().strftime("%Y-%m-%d %H:%M:%S.%f")
     user_info = f" [User: {user}]" if user else ""
-    full_message = f"[{timestamp}]{user_info} {message}"
-    frappe.logger("mfa_debug").debug(full_message)
-    print(full_message)  # Also print to console for immediate visibility
+    full_message = f"[v{version}] [{timestamp}]{user_info} {message}"
+    
+    # Log to Error Log doctype
+    error_log = frappe.get_doc({
+        "doctype": "Error Log",
+        "method": "MFA Debug",
+        "error": full_message,
+        "seen": 0,  # Mark as unread
+        "reference_doctype": "User MFA Timestamp",
+        "reference_name": user or "System"
+    })
+    error_log.insert(ignore_permissions=True)
+    
+    # Also maintain console logging for local development
+    print(full_message)
 
 def update_mfa_timestamp(user):
     """Guaranteed single-user timestamp update"""
