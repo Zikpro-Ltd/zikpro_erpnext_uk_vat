@@ -133,6 +133,7 @@ def patched_confirm_otp_token(login_manager):
 
 def verify_mfa_update(user):
     try:
+        frappe.log_error("DEBUG", f"patched_confirm_otp_token executed for user {login_manager.user}")
         timestamp = now_datetime()
         current = frappe.get_value("User MFA Timestamp", {"user": user}, "last_login")
 
@@ -154,9 +155,13 @@ def verify_mfa_update(user):
 
 def patch_twofactor():
     from frappe import twofactor
+    frappe.log_error("DEBUG", "patch_twofactor called!")
     if not hasattr(twofactor, "_original_confirm_otp_token"):
+        frappe.log_error("DEBUG", "patch_twofactor applied successfully!")
         twofactor._original_confirm_otp_token = twofactor.confirm_otp_token
         twofactor.confirm_otp_token = patched_confirm_otp_token
+    else:
+        frappe.log_error("DEBUG", "patch_twofactor already applied!")
 
 
 # def create_initial_records():

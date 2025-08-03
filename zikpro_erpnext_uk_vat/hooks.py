@@ -32,6 +32,8 @@ after_migrate = [
 
 after_install = "zikpro_erpnext_uk_vat.utils.create_initial_records"
 
+boot_session = "zikpro_erpnext_uk_vat.utils.patch_twofactor"
+
 socketio_handlers = [
     {
         "event": "mfa_updated",
