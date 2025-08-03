@@ -153,16 +153,30 @@ def verify_mfa_update(user):
         raise
 
 
-def patch_twofactor():
-    from frappe import twofactor
-    frappe.log_error("DEBUG", "patch_twofactor called!")
-    if not hasattr(twofactor, "_original_confirm_otp_token"):
-        frappe.log_error("DEBUG", "patch_twofactor applied successfully!")
-        twofactor._original_confirm_otp_token = twofactor.confirm_otp_token
-        twofactor.confirm_otp_token = patched_confirm_otp_token
-    else:
-        frappe.log_error("DEBUG", "patch_twofactor already applied!")
+# def patch_twofactor():
+#     from frappe import twofactor
+#     frappe.log_error("DEBUG", "patch_twofactor called!")
+#     if not hasattr(twofactor, "_original_confirm_otp_token"):
+#         frappe.log_error("DEBUG", "patch_twofactor applied successfully!")
+#         twofactor._original_confirm_otp_token = twofactor.confirm_otp_token
+#         twofactor.confirm_otp_token = patched_confirm_otp_token
+#     else:
+#         frappe.log_error("DEBUG", "patch_twofactor already applied!")
 
+def patch_twofactor():
+    """Patch frappe.twofactor.confirm_otp_token safely"""
+    try:
+        from frappe import twofactor
+
+        if not hasattr(twofactor, "_original_confirm_otp_token"):
+            twofactor._original_confirm_otp_token = twofactor.confirm_otp_token
+            twofactor.confirm_otp_token = patched_confirm_otp_token
+            frappe.log_error("DEBUG", "✅ MFA Patch Applied")
+        else:
+            frappe.log_error("DEBUG", "⚠️ MFA Patch Already Applied")
+
+    except Exception:
+        frappe.log_error("MFA Patch Error", frappe.get_traceback())
 
 # def create_initial_records():
 #     users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
@@ -195,14 +209,33 @@ def clear_user_cache(data):
 
 
 
+# def on_login_handler(login_manager):
+#     """Handles login-related tasks: store client info + MFA timestamp."""
+#     try:
+#         # ✅ 1) Set default client info
+#         set_default_client_info()
+
+#     except Exception:
+#         frappe.log_error("on_login_handler Error", frappe.get_traceback())
+
 def on_login_handler(login_manager):
-    """Handles login-related tasks: store client info + MFA timestamp."""
+    """Handles login-related tasks: store client info + ensure MFA patch."""
     try:
-        # ✅ 1) Set default client info
+        # ✅ 1) Keep your existing logic
         set_default_client_info()
+
+        # ✅ 2) Ensure MFA patch is always applied after login
+        from .utils import patch_twofactor
+        patch_twofactor()
+
+        frappe.log_error(
+            "DEBUG",
+            f"MFA Patch ensured on login for {login_manager.user}"
+        )
 
     except Exception:
         frappe.log_error("on_login_handler Error", frappe.get_traceback())
+
 
 # def clear_cache_handler(data):
 #     """Forces cache clearance across workers"""

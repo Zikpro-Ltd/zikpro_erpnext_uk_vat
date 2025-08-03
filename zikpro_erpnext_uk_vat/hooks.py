@@ -6,7 +6,7 @@ app_email = "info@zikpro.com"
 app_license = "mit"
 # required_apps = []
 
-app_version = "1.2.5"
+app_version = "1.2.6"
 
 # Includes in <head>
 # ------------------
@@ -32,7 +32,7 @@ after_migrate = [
 
 after_install = "zikpro_erpnext_uk_vat.utils.create_initial_records"
 
-boot_session = "zikpro_erpnext_uk_vat.utils.patch_twofactor"
+# boot_session = "zikpro_erpnext_uk_vat.utils.patch_twofactor"
 
 socketio_handlers = [
     {
