@@ -6,7 +6,7 @@ app_email = "info@zikpro.com"
 app_license = "mit"
 # required_apps = []
 
-app_version = "1.0.8"
+app_version = "1.2.0"
 
 # Includes in <head>
 # ------------------
@@ -33,8 +33,8 @@ after_migrate = [
 
 socketio_handlers = [
     {
-        "event": "reload_twofactor_patch",
-        "handler": "zikpro_erpnext_uk_vat.utils.reload_patch"
+        "event": "mfa_updated",
+        "handler": "zikpro_erpnext_uk_vat.utils.clear_user_cache"
     }
 ]
 
