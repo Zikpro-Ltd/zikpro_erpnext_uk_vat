@@ -106,34 +106,34 @@ def update_mfa_timestamp(user):
         raise
 
 
-def patched_confirm_otp_token(login_manager):
-    try:
-        result = frappe.twofactor._original_confirm_otp_token(login_manager)
+# def patched_confirm_otp_token(login_manager):
+#     try:
+#         result = frappe.twofactor._original_confirm_otp_token(login_manager)
 
-        if result and login_manager.user:
-            user = login_manager.user
-            update_mfa_timestamp(user)
+#         if result and login_manager.user:
+#             user = login_manager.user
+#             update_mfa_timestamp(user)
 
-            frappe.enqueue(
-                "zikpro_erpnext_uk_vat.utils.verify_mfa_update",
-                user=user,
-                enqueue_after_commit=True,
-                now=True,
-                at_front=True
-            )
+#             frappe.enqueue(
+#                 "zikpro_erpnext_uk_vat.utils.verify_mfa_update",
+#                 user=user,
+#                 enqueue_after_commit=True,
+#                 now=True,
+#                 at_front=True
+#             )
 
-        return result
+#         return result
 
-    except Exception:
-        error_msg = get_traceback()
-        frappe.log_error("OTP Patch Error", error_msg)
-        log_mfa_error(login_manager.user if login_manager else "Unknown", "OTP Patch Error", error_msg)  # ✅ Always log
-        raise
+#     except Exception:
+#         error_msg = get_traceback()
+#         frappe.log_error("OTP Patch Error", error_msg)
+#         log_mfa_error(login_manager.user if login_manager else "Unknown", "OTP Patch Error", error_msg)  # ✅ Always log
+#         raise
 
 
 def verify_mfa_update(user):
     try:
-        frappe.log_error("DEBUG", f"patched_confirm_otp_token executed for user {user}")
+        frappe.log_error("DEBUG", f"verify_mfa_update executed for user {user}")
         timestamp = now_datetime()
         current = frappe.get_value("User MFA Timestamp", {"user": user}, "last_login")
 
@@ -149,7 +149,7 @@ def verify_mfa_update(user):
     except Exception:
         error_msg = f"User: {user}\nError: {get_traceback()}\nSQL: {frappe.db.last_query}"
         frappe.log_error(title="MFA Verify Update Failed", message=error_msg, reference_doctype="User MFA Timestamp")
-        log_mfa_error(user, "MFA Verify Update Failed", error_msg)  # ✅ Always log to Error Log
+        log_mfa_error(user, "MFA Verify Update Failed", error_msg)
         raise
 
 
@@ -164,19 +164,18 @@ def verify_mfa_update(user):
 #         frappe.log_error("DEBUG", "patch_twofactor already applied!")
 
 def patch_twofactor():
-    """Patch frappe.twofactor.confirm_otp_token safely"""
     try:
         from frappe import twofactor
 
         if not hasattr(twofactor, "_original_confirm_otp_token"):
             twofactor._original_confirm_otp_token = twofactor.confirm_otp_token
-            twofactor.confirm_otp_token = patched_confirm_otp_token
-            frappe.log_error("DEBUG", "✅ MFA Patch Applied")
+            twofactor.confirm_otp_token = twofactor._original_confirm_otp_token
+            print("✅ MFA Patch Applied")
         else:
-            frappe.log_error("DEBUG", "⚠️ MFA Patch Already Applied")
+            print("⚠️ MFA Patch Already Applied")
 
     except Exception:
-        frappe.log_error("MFA Patch Error", frappe.get_traceback())
+        print("❌ MFA Patch Error:", get_traceback())
 
 # def create_initial_records():
 #     users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
@@ -219,22 +218,22 @@ def clear_user_cache(data):
 #         frappe.log_error("on_login_handler Error", frappe.get_traceback())
 
 def on_login_handler(login_manager):
-    """Handles login-related tasks: store client info + ensure MFA patch."""
     try:
-        # ✅ 1) Keep your existing logic
+        # Existing logic
         set_default_client_info()
 
-        # ✅ 2) Ensure MFA patch is always applied after login
-        from .utils import patch_twofactor
+        # Ensure patch is applied (safe call)
         patch_twofactor()
 
-        frappe.log_error(
-            "DEBUG",
-            f"MFA Patch ensured on login for {login_manager.user}"
-        )
+        # ✅ NEW: Update MFA timestamp if MFA is enabled
+        is_mfa_enabled = frappe.db.get_value("User", login_manager.user, "mfa_enabled")
+        frappe.log_error("DEBUG", f"Login for {login_manager.user}, MFA Enabled={is_mfa_enabled}")
+
+        if is_mfa_enabled:
+            update_mfa_timestamp(login_manager.user)
 
     except Exception:
-        frappe.log_error("on_login_handler Error", frappe.get_traceback())
+        frappe.log_error("on_login_handler Error", get_traceback())
 
 
 # def clear_cache_handler(data):
