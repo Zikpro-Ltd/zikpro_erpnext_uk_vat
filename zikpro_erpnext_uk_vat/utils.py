@@ -65,8 +65,6 @@ def log_mfa_error(user, title, error_message):
     except Exception as e:
         frappe.logger().error(f"Failed to log MFA error: {e} | Original Error: {error_message}")
 
-
-
 def update_mfa_timestamp(user):
     try:
         if not user or user == "Guest":
@@ -74,13 +72,15 @@ def update_mfa_timestamp(user):
 
         timestamp = now_datetime()
 
-        frappe.db.sql("""
-            UPDATE `tabUser MFA Timestamp`
-            SET last_login = %s, modified = %s
-            WHERE user = %s
-        """, (timestamp, timestamp, user))
+        exists = frappe.db.exists("User MFA Timestamp", {"user": user})
 
-        if frappe.db.affected_rows() == 0:
+        if exists:
+            frappe.db.sql("""
+                UPDATE `tabUser MFA Timestamp`
+                SET last_login = %s, modified = %s
+                WHERE user = %s
+            """, (timestamp, timestamp, user))
+        else:
             frappe.db.sql("""
                 INSERT INTO `tabUser MFA Timestamp`
                 (name, user, last_login, creation, modified)
