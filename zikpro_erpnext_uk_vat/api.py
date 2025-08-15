@@ -1139,27 +1139,63 @@ def get_license_ids():
     except Exception:
         return ""  # Omit entirely if data is unavailable
 
+# def get_vendor_public_ip():
+#     """Get the public IP of your outermost infrastructure (WAF/LB/Server)"""
+#     try:
+#         # 1. For Frappe Cloud - Use pre-configured VM IP
+#         if hasattr(frappe.conf, 'vm_public_ip'):
+#             return frappe.conf.vm_public_ip  # Auto-set by Frappe Cloud
+        
+#         # 2. For self-hosted with reverse proxy (Nginx/Apache)
+#         proxy_ip = frappe.local.request.headers.get(
+#             'X-Forwarded-Server',
+#             frappe.local.request.headers.get('Host')
+#         )
+#         if proxy_ip and is_public_ip(proxy_ip):
+#             return proxy_ip
+        
+#         # 3. Fallback to server's public IP
+#         import requests
+#         return requests.get('https://api.ipify.org', timeout=2).text.strip() or ""
+    
+#     except Exception:
+#         return ""  # Omit if undetectable
+
 def get_vendor_public_ip():
     """Get the public IP of your outermost infrastructure (WAF/LB/Server)"""
     try:
-        # 1. For Frappe Cloud - Use pre-configured VM IP
+        # 1. Check HMRC-specific header first (if set by your proxy)
+        hmrc_ip = frappe.local.request.headers.get('Gov-Vendor-Public-IP')
+        if hmrc_ip and is_public_ip(hmrc_ip):
+            return hmrc_ip
+
+        # 2. For Frappe Cloud - Use pre-configured VM IP
         if hasattr(frappe.conf, 'vm_public_ip'):
-            return frappe.conf.vm_public_ip  # Auto-set by Frappe Cloud
-        
-        # 2. For self-hosted with reverse proxy (Nginx/Apache)
-        proxy_ip = frappe.local.request.headers.get(
-            'X-Forwarded-Server',
-            frappe.local.request.headers.get('Host')
-        )
-        if proxy_ip and is_public_ip(proxy_ip):
-            return proxy_ip
-        
-        # 3. Fallback to server's public IP
-        import requests
-        return requests.get('https://api.ipify.org', timeout=2).text.strip() or ""
-    
+            return frappe.conf.vm_public_ip
+
+        # 3. Check common proxy headers (prioritize public IPs)
+        proxy_headers = [
+            'X-Forwarded-Server',  # Your current check
+            'X-Real-IP',           # Common in Nginx
+            'CF-Connecting-IP',    # Cloudflare
+            'X-Client-IP',         # Alternate header
+            'Host'                 # Last resort
+        ]
+
+        for header in proxy_headers:
+            ip = frappe.local.request.headers.get(header, '').split(':')[0]  # Remove port
+            if ip and is_public_ip(ip):
+                return ip
+
+        # 4. Fallback to server's public IP (with timeout safety)
+        try:
+            import requests
+            return requests.get('https://api.ipify.org', timeout=2).text.strip() or ""
+        except:
+            return ""  # Skip if API fails
+
     except Exception:
-        return ""  # Omit if undetectable
+        return ""  # Maintain existing error handling
         
 
 # def generate_compliant_fallback_headers():
