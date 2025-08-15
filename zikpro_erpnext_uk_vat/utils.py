@@ -98,11 +98,11 @@ def update_mfa_timestamp(user):
         frappe.log_error("MFA Update Failed", msg)
         log_mfa_error(user, "MFA Update Failed", msg)
 
-def custom_post_login(login_manager):
+def custom_post_login(login_manager,*args, **kwargs):
     try:
         # Call original method
         from frappe.auth import LoginManager
-        LoginManager.original_post_login(login_manager)
+        LoginManager.original_post_login(login_manager,*args, **kwargs)
 
         # Always update MFA timestamp after successful login
         update_mfa_timestamp(login_manager.user)
