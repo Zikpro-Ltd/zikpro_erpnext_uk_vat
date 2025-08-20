@@ -1162,40 +1162,77 @@ def get_license_ids():
 #         return ""  # Omit if undetectable
 
 def get_vendor_public_ip():
-    """Get the public IP of your outermost infrastructure (WAF/LB/Server)"""
+    """Get the public IP of YOUR infrastructure (WAF/LB/Server) that received the request"""
     try:
-        # 1. Check HMRC-specific header first (if set by your proxy)
-        hmrc_ip = frappe.local.request.headers.get('Gov-Vendor-Public-IP')
-        if hmrc_ip and is_public_ip(hmrc_ip):
-            return hmrc_ip
+        # 1. FIRST: Check if we're behind a reverse proxy/load balancer
+        # These headers typically contain the IP of the proxy that forwarded to us
+        proxy_headers = [
+            'X-Forwarded-For',        # The entire proxy chain (last IP is your LB/WAF)
+            'X-Real-IP',              # Often set by Nginx to the client IP (not what we want)
+            'X-Forwarded-Server',     # The hostname of the proxy server
+            'X-Forwarded-Host',       # The host header from original request
+            'CF-Connecting-IP',       # Cloudflare (client IP)
+            'True-Client-IP'          # Akamai and others (client IP)
+        ]
+        
+        # For X-Forwarded-For: Get the LAST IP in the chain (your infrastructure)
+        x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
+        if x_forwarded_for:
+            # Split and get the last IP (the one closest to your infrastructure)
+            ips = [ip.strip() for ip in x_forwarded_for.split(',')]
+            last_proxy_ip = ips[-1] if ips else ''
+            if last_proxy_ip and is_public_ip(last_proxy_ip):
+                return last_proxy_ip
 
-        # 2. For Frappe Cloud - Use pre-configured VM IP
-        if hasattr(frappe.conf, 'vm_public_ip'):
+        # 2. Check if we have a pre-configured public IP (for cloud environments)
+        if hasattr(frappe.conf, 'vm_public_ip') and frappe.conf.vm_public_ip:
             return frappe.conf.vm_public_ip
 
-        # 3. Check common proxy headers (prioritize public IPs)
-        proxy_headers = [
-            'X-Forwarded-Server',  # Your current check
-            'X-Real-IP',           # Common in Nginx
-            'CF-Connecting-IP',    # Cloudflare
-            'X-Client-IP',         # Alternate header
-            'Host'                 # Last resort
-        ]
-
-        for header in proxy_headers:
-            ip = frappe.local.request.headers.get(header, '').split(':')[0]  # Remove port
-            if ip and is_public_ip(ip):
+        # 3. Check server's own public IP (if it has one)
+        server_public_ips = get_server_public_ips()
+        for ip in server_public_ips:
+            if is_public_ip(ip):
                 return ip
 
-        # 4. Fallback to server's public IP (with timeout safety)
-        try:
-            import requests
-            return requests.get('https://api.ipify.org', timeout=2).text.strip() or ""
-        except:
-            return ""  # Skip if API fails
+        # 4. If we're in a private network with no public IP, return empty as per HMRC guidance
+        # HMRC: "If the connection between client and server is over a private network, 
+        # you will not be able to collect a public IP address."
+        return ""
 
     except Exception:
         return ""  # Maintain existing error handling
+
+def get_server_public_ips():
+    """Get public IPs from server network interfaces"""
+    try:
+        import socket
+        public_ips = []
+        
+        # Method 1: Get IP by connecting to external service (outbound IP)
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            outbound_ip = s.getsockname()[0]
+            s.close()
+            if outbound_ip and is_public_ip(outbound_ip):
+                public_ips.append(outbound_ip)
+        except:
+            pass
+            
+        # Method 2: Get all non-private interface IPs
+        try:
+            hostname = socket.gethostname()
+            host_ips = socket.gethostbyname_ex(hostname)[2]
+            for ip in host_ips:
+                if is_public_ip(ip):
+                    public_ips.append(ip)
+        except:
+            pass
+            
+        return public_ips
+        
+    except:
+        return []
         
 
 # def generate_compliant_fallback_headers():
