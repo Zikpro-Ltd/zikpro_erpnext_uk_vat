@@ -9,13 +9,16 @@ from frappe import publish_realtime
 def update_client_info(screen_width, screen_height, color_depth, pixel_ratio, timezone_offset):
     """Store real-time client information in session"""
     try:
+        tz_offset = float(timezone_offset)
+
         frappe.session.data.update({
             'client_info': {
                 'width': max(1, int(screen_width)),
                 'height': max(1, int(screen_height)),
                 'color_depth': max(8, int(color_depth)),
                 'scaling': max(0.5, float(pixel_ratio)),
-                'timezone_offset': float(timezone_offset),
+                'timezone_offset': tz_offset,
+                'timezone_offset_rounded': round(tz_offset),
                 'last_updated': datetime.now().isoformat()
             }
         })
