@@ -844,8 +844,10 @@ def get_fraud_prevention_headers():
         )
         
         # Timezone
-        offset = client_info.get('timezone_offset', 0)
-        timezone = f"UTC{'+' if offset >=0 else ''}{offset}:00"
+        # offset = client_info.get('timezone_offset', 0)
+        # timezone = f"UTC{'+' if offset >=0 else ''}{offset}:00"
+        timezone = get_timezone()
+        
         
         # Window size
         window_size = (
@@ -1214,6 +1216,27 @@ def get_vendor_public_ip():
 
     except Exception:
         return ""
+
+def get_timezone():
+    """Get timezone from client-side data in HMRC-compliant format"""
+    try:
+        client_info = frappe.session.data.get('client_info', {})
+        offset = client_info.get('timezone_offset', 0)
+        
+        # Convert decimal offset to whole hours (HMRC requirement)
+        hours = int(offset)  # Get integer hours
+        minutes = int((abs(offset) - abs(hours)) * 60)  # Convert decimal to minutes
+        
+        # Handle positive and negative offsets
+        sign = '+' if offset >= 0 else '-'
+        
+        # Format as UTC±HH:MM (HMRC compliant)
+        return f"UTC{sign}{abs(hours):02d}:{minutes:02d}"
+        
+    except Exception:
+        # Fallback to server timezone
+        server_offset = -time.timezone // 3600
+        return f"UTC{'+' if server_offset >=0 else '-'}{abs(server_offset):02d}:00"
         
 
 # def generate_compliant_fallback_headers():
