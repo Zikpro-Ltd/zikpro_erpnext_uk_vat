@@ -1223,51 +1223,105 @@ def get_license_ids():
 #     except Exception:
 #         return ""  # Omit if undetectable
 
+# def get_vendor_public_ip():
+#     """Get the public IP of YOUR infrastructure (WAF/LB/Server) that received the request"""
+#     try:
+#         # 1. FIRST: Check X-Forwarded-For - get the LAST IP (your infrastructure)
+#         x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
+#         if x_forwarded_for:
+#             # Split and get the last IP (the one closest to your infrastructure)
+#             ips = [ip.strip() for ip in x_forwarded_for.split(',')]
+#             last_proxy_ip = ips[-1] if ips else ''
+#             if last_proxy_ip and is_public_ip(last_proxy_ip):
+#                 return last_proxy_ip
+
+#         # 2. Check if we're behind a proxy that sets the client IP in other headers
+#         # These often indicate the public IP of your infrastructure
+#         proxy_headers = [
+#             'X-Real-IP',              # Sometimes contains the proxy IP
+#             'X-Forwarded-Server',     # Hostname of proxy
+#             'CF-Connecting-IP',       # Cloudflare
+#             'True-Client-IP'          # Akamai and others
+#         ]
+        
+#         for header in proxy_headers:
+#             ip = frappe.local.request.headers.get(header, '').split(':')[0].strip()
+#             if ip and is_public_ip(ip):
+#                 return ip
+
+#         # 3. Check if we have a pre-configured public IP
+#         if hasattr(frappe.conf, 'vm_public_ip') and frappe.conf.vm_public_ip:
+#             return frappe.conf.vm_public_ip
+
+#         # 4. Based on your Gov-Vendor-Forwarded header, we can extract the public IP
+#         # Your header shows: "by=10.14.1.101&for=101.53.224.59,by=101.53.224.59&for=10.14.1.101"
+#         # The public IP 101.53.224.59 appears in the "for" field of the first hop
+#         vendor_forwarded = frappe.local.request.headers.get('Gov-Vendor-Forwarded', '')
+#         if vendor_forwarded:
+#             # Parse the forwarded header to find public IPs
+#             hops = vendor_forwarded.split(',')
+#             for hop in hops:
+#                 if 'for=' in hop:
+#                     for_part = hop.split('for=')[1].split('&')[0].strip()
+#                     if for_part and is_public_ip(for_part):
+#                         return for_part
+
+#         # 5. If all else fails, return the client's public IP (from your working header)
+#         # This is better than empty, and based on your infrastructure, it's actually your LB IP
+#         client_public_ip = frappe.local.request.headers.get('Gov-Client-Public-IP', '')
+#         if client_public_ip and is_public_ip(client_public_ip):
+#             return client_public_ip
+
+#         return ""  # Final fallback
+
+#     except Exception:
+#         return ""
+
 def get_vendor_public_ip():
     """Get the public IP of YOUR infrastructure (WAF/LB/Server) that received the request"""
     try:
-        # 1. FIRST: Check X-Forwarded-For - get the LAST IP (your infrastructure)
+        # 1️⃣ Try X-Forwarded-For (last hop - closest to your infrastructure)
         x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
         if x_forwarded_for:
-            # Split and get the last IP (the one closest to your infrastructure)
             ips = [ip.strip() for ip in x_forwarded_for.split(',')]
             last_proxy_ip = ips[-1] if ips else ''
             if last_proxy_ip and is_public_ip(last_proxy_ip):
                 return last_proxy_ip
 
-        # 2. Check if we're behind a proxy that sets the client IP in other headers
-        # These often indicate the public IP of your infrastructure
+        # 2️⃣ Common proxy headers
         proxy_headers = [
-            'X-Real-IP',              # Sometimes contains the proxy IP
-            'X-Forwarded-Server',     # Hostname of proxy
-            'CF-Connecting-IP',       # Cloudflare
-            'True-Client-IP'          # Akamai and others
+            'X-Real-IP',
+            'X-Forwarded-Server',
+            'CF-Connecting-IP',
+            'True-Client-IP'
         ]
-        
         for header in proxy_headers:
             ip = frappe.local.request.headers.get(header, '').split(':')[0].strip()
             if ip and is_public_ip(ip):
                 return ip
 
-        # 3. Check if we have a pre-configured public IP
+        # 3️⃣ Config-defined public IP (static server config)
         if hasattr(frappe.conf, 'vm_public_ip') and frappe.conf.vm_public_ip:
             return frappe.conf.vm_public_ip
 
-        # 4. Based on your Gov-Vendor-Forwarded header, we can extract the public IP
-        # Your header shows: "by=10.14.1.101&for=101.53.224.59,by=101.53.224.59&for=10.14.1.101"
-        # The public IP 101.53.224.59 appears in the "for" field of the first hop
+        # 4️⃣ Parse Gov-Vendor-Forwarded header
         vendor_forwarded = frappe.local.request.headers.get('Gov-Vendor-Forwarded', '')
         if vendor_forwarded:
-            # Parse the forwarded header to find public IPs
             hops = vendor_forwarded.split(',')
+            for hop in hops:
+                # ✅ Prefer the "by=" (server/WAF/LB public IP)
+                if 'by=' in hop:
+                    by_part = hop.split('by=')[1].split('&')[0].strip()
+                    if by_part and is_public_ip(by_part):
+                        return by_part
+            # fallback to "for=" if "by=" not found or private
             for hop in hops:
                 if 'for=' in hop:
                     for_part = hop.split('for=')[1].split('&')[0].strip()
                     if for_part and is_public_ip(for_part):
                         return for_part
 
-        # 5. If all else fails, return the client's public IP (from your working header)
-        # This is better than empty, and based on your infrastructure, it's actually your LB IP
+        # 5️⃣ Fallback - use client public IP if infrastructure not visible
         client_public_ip = frappe.local.request.headers.get('Gov-Client-Public-IP', '')
         if client_public_ip and is_public_ip(client_public_ip):
             return client_public_ip
@@ -1276,6 +1330,7 @@ def get_vendor_public_ip():
 
     except Exception:
         return ""
+
 
 def get_timezone():
     """Get timezone from client-side data in HMRC-compliant format"""
