@@ -1205,46 +1205,35 @@ def get_vendor_forwarded():
     Generate HMRC-compliant Gov-Vendor-Forwarded header
     """
     hops = []
-    
-    # Get client IP from HMRC header
+
     client_public_ip = frappe.local.request.headers.get('Gov-Client-Public-IP', '')
     if not client_public_ip or not is_public_ip(client_public_ip):
-        return ""  # Cannot generate without valid client IP
-    
-    # Get your server's public IP (the infrastructure IP)
+        return ""
+
     server_public_ip = get_vendor_public_ip()
     if not server_public_ip:
-        return ""  # Cannot generate without server IP
-    
-    # Get proxy chain from X-Forwarded-For
+        return ""
+
     x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
     proxy_chain = [ip.strip() for ip in x_forwarded_for.split(',') if ip.strip()]
-    
-    # Build the hop sequence according to HMRC examples
+
+    # Simple case: direct client → your server
     if not proxy_chain:
-        # Simple case: Client → Your Server
-        # by = your server IP, for = client IP
         hop = f"by={quote(server_public_ip)}&for={quote(client_public_ip)}"
         hops.append(hop)
     else:
-        # Complex case: Client → Proxy1 → Proxy2 → Your Server
-        # Reconstruct the chain properly
+        # Client → proxy1 → proxy2 → your server
         all_ips = [client_public_ip] + proxy_chain
-        
         for i in range(len(all_ips) - 1):
-            # by = receiving server, for = sending client/proxy
-            by_ip = all_ips[i + 1]  # The server that received the request
-            for_ip = all_ips[i]     # The client/proxy that sent the request
-            
+            by_ip = all_ips[i + 1]
+            for_ip = all_ips[i]
             if is_public_ip(by_ip) and is_public_ip(for_ip):
-                hop = f"by={quote(by_ip)}&for={quote(for_ip)}"
-                hops.append(hop)
-        
-        # Final hop: Last proxy → Your actual server
+                hops.append(f"by={quote(by_ip)}&for={quote(for_ip)}")
+
+        # Final hop: last proxy → your actual server
         if is_public_ip(server_public_ip) and is_public_ip(all_ips[-1]):
-            final_hop = f"by={quote(server_public_ip)}&for={quote(all_ips[-1])}"
-            hops.append(final_hop)
-    
+            hops.append(f"by={quote(server_public_ip)}&for={quote(all_ips[-1])}")
+
     return ",".join(hops)
 
 def get_license_ids():
@@ -1320,32 +1309,40 @@ def get_license_ids():
 
 def get_vendor_public_ip():
     """
-    Get the public IP of YOUR infrastructure that received the request
-    This should be your WAF/Load Balancer/Server's public IP
+    Determine the public IP of YOUR infrastructure (WAF/LB/Server)
+    that received the request, per HMRC spec.
     """
-    # 1️⃣ Try to get from X-Forwarded-For (last proxy before your server)
+    # 1️⃣ Check Gov-Vendor-Forwarded header itself (preferred)
+    vendor_forwarded = frappe.local.request.headers.get('Gov-Vendor-Forwarded', '')
+    if vendor_forwarded:
+        # Extract the first 'by=' value (the infrastructure that received the client request)
+        first_hop = vendor_forwarded.split(',')[0]
+        if 'by=' in first_hop:
+            by_part = first_hop.split('by=')[1].split('&')[0].strip()
+            if by_part and is_public_ip(by_part):
+                return by_part
+
+    # 2️⃣ X-Forwarded-For: last IP is the one closest to your server
     x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
     if x_forwarded_for:
         ips = [ip.strip() for ip in x_forwarded_for.split(',')]
-        # Last IP in X-Forwarded-For is the one that connected to your server
         last_proxy_ip = ips[-1] if ips else ''
         if last_proxy_ip and is_public_ip(last_proxy_ip):
             return last_proxy_ip
 
-    # 2️⃣ Common infrastructure headers
+    # 3️⃣ Common proxy headers
     infrastructure_headers = [
-        'X-Forwarded-Server',  # Often contains load balancer IP
-        'X-Real-IP',           # Sometimes set by proxies
-        'CF-Connecting-IP',    # Cloudflare
-        'True-Client-IP',      # Akamai and others
+        'X-Forwarded-Server',
+        'X-Real-IP',
+        'CF-Connecting-IP',
+        'True-Client-IP'
     ]
-    
     for header in infrastructure_headers:
         ip = frappe.local.request.headers.get(header, '').split(':')[0].strip()
         if ip and is_public_ip(ip):
             return ip
 
-    # 3️⃣ Fallback to server's public IP
+    # 4️⃣ Fallback: use the server's public IP from ipify/config
     server_ip = get_server_public_ip()
     if server_ip and is_public_ip(server_ip):
         return server_ip
