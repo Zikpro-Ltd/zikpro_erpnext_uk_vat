@@ -16,6 +16,7 @@ import datetime
 import platform
 from frappe.utils import get_site_name,get_host_name
 import time
+import ipaddress
 # from frappe.utils import hash
 
 
@@ -1070,59 +1071,118 @@ def get_mfa_header():
         frappe.log_error("MFA Header Error", str(e))
         return ""
 
+# def is_public_ip(ip):
+#     """Check if IP is public (not RFC 1918)"""
+#     try:
+#         return not any(ip.startswith(prefix) for prefix in 
+#                       ['10.', '172.', '192.168.', 'fc00::'])
+#     except:
+#         return False
+
+# def get_vendor_forwarded(client_ip):
+#     """Generate HMRC-compliant forwarded header with proxy chain"""
+#     hops = []
+    
+#     try:
+#         # Get all X-Forwarded-For IPs (reverse order)
+#         forwarded_ips = frappe.local.request.headers.get('X-Forwarded-For', '')
+#         proxy_chain = [ip.strip() for ip in forwarded_ips.split(',') if ip.strip()]
+#         proxy_chain.reverse()  # Client IP is now first
+        
+#         # Add client IP if valid
+#         if client_ip and is_public_ip(client_ip):
+#             proxy_chain.insert(0, client_ip)
+        
+#         # Get server's public IP (skip private IPs)
+#         server_ip = None
+#         try:
+#             server_ip = socket.gethostbyname(socket.gethostname())
+#             if not is_public_ip(server_ip):
+#                 server_ip = frappe.local.conf.get("public_ip")  # Fallback
+#         except:
+#             pass
+        
+#         # Build hop chain
+#         for i in range(len(proxy_chain)):
+#             if i == 0:  # First hop (client → first public proxy)
+#                 if len(proxy_chain) > 1:
+#                     hops.append(f"by={quote(proxy_chain[1])}&for={quote(proxy_chain[0])}")
+#                 elif server_ip:
+#                     hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[0])}")
+#             else:  # Subsequent hops
+#                 if i+1 < len(proxy_chain):
+#                     hops.append(f"by={quote(proxy_chain[i+1])}&for={quote(proxy_chain[i])}")
+#                 elif server_ip:
+#                     hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[i])}")
+        
+#         # Add final hop (last proxy → your server)
+#         if server_ip and hops:
+#             hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[-1])}")
+        
+#         return ",".join(hops) if hops else ""
+        
+#     except Exception as e:
+#         frappe.log_error("Vendor-Forwarded Header Error", str(e))
+#         return ""
+
 def is_public_ip(ip):
-    """Check if IP is public (not RFC 1918)"""
+    """Return True if IP is global/public"""
     try:
-        return not any(ip.startswith(prefix) for prefix in 
-                      ['10.', '172.', '192.168.', 'fc00::'])
-    except:
+        return ipaddress.ip_address(ip).is_global
+    except ValueError:
         return False
 
-def get_vendor_forwarded(client_ip):
-    """Generate HMRC-compliant forwarded header with proxy chain"""
-    hops = []
-    
+def get_server_public_ip():
+    """
+    Get server's public IP.
+    Tries to detect via external service.
+    If not available, falls back to hostname resolution.
+    """
     try:
-        # Get all X-Forwarded-For IPs (reverse order)
-        forwarded_ips = frappe.local.request.headers.get('X-Forwarded-For', '')
-        proxy_chain = [ip.strip() for ip in forwarded_ips.split(',') if ip.strip()]
-        proxy_chain.reverse()  # Client IP is now first
-        
-        # Add client IP if valid
-        if client_ip and is_public_ip(client_ip):
-            proxy_chain.insert(0, client_ip)
-        
-        # Get server's public IP (skip private IPs)
-        server_ip = None
+        # External service (fast & reliable)
+        return requests.get("https://api.ipify.org").text.strip()
+    except:
         try:
-            server_ip = socket.gethostbyname(socket.gethostname())
-            if not is_public_ip(server_ip):
-                server_ip = frappe.local.conf.get("public_ip")  # Fallback
+            # Fallback to hostname resolution
+            ip = socket.gethostbyname(socket.gethostname())
+            if is_public_ip(ip):
+                return ip
         except:
             pass
-        
-        # Build hop chain
-        for i in range(len(proxy_chain)):
-            if i == 0:  # First hop (client → first public proxy)
-                if len(proxy_chain) > 1:
-                    hops.append(f"by={quote(proxy_chain[1])}&for={quote(proxy_chain[0])}")
-                elif server_ip:
-                    hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[0])}")
-            else:  # Subsequent hops
-                if i+1 < len(proxy_chain):
-                    hops.append(f"by={quote(proxy_chain[i+1])}&for={quote(proxy_chain[i])}")
-                elif server_ip:
-                    hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[i])}")
-        
-        # Add final hop (last proxy → your server)
-        if server_ip and hops:
-            hops.append(f"by={quote(server_ip)}&for={quote(proxy_chain[-1])}")
-        
-        return ",".join(hops) if hops else ""
-        
-    except Exception as e:
-        frappe.log_error("Vendor-Forwarded Header Error", str(e))
-        return ""
+    return None
+
+def get_vendor_forwarded(client_ip):
+    """Generate HMRC-compliant Gov-Vendor-Forwarded header"""
+    hops = []
+
+    # Get proxy chain from request headers (if exists)
+    forwarded_ips = frappe.local.request.headers.get('X-Forwarded-For', '')
+    proxy_chain = [ip.strip() for ip in forwarded_ips.split(',') if ip.strip()]
+
+    # Insert client_ip at start if valid
+    if client_ip and is_public_ip(client_ip):
+        if not proxy_chain or proxy_chain[0] != client_ip:
+            proxy_chain.insert(0, client_ip)
+
+    # Server's public IP
+    server_ip = get_server_public_ip()
+
+    if not server_ip:
+        return ""   # No valid server IP → cannot generate
+
+    # Build hop sequence
+    prev = None
+    for ip in proxy_chain:
+        if is_public_ip(ip):
+            if prev is None:
+                # First hop → by = server, for = client
+                hops.append(f"by={server_ip}&for={ip}")
+            else:
+                # Subsequent → by = prev, for = current
+                hops.append(f"by={prev}&for={ip}")
+            prev = ip
+
+    return ",".join(hops)
 
 def get_license_ids():
     """Generate HMRC-compliant license IDs with proper encoding"""
