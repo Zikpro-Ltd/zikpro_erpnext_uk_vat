@@ -1187,85 +1187,53 @@ def get_server_public_ip():
         frappe.logger().error(f"Error detecting server public IP: {str(e)}")
         return None
 
-# def get_vendor_forwarded(client_ip):
-#     """Generate HMRC-compliant Gov-Vendor-Forwarded header"""
-#     hops = []
+# for single HOP
+# def get_vendor_forwarded():
+#     """
+#     Build the Gov-Vendor-Forwarded header automatically.
+#     """
+#     try:
+#         client_public_ip = get_public_ip() or frappe.local.request.headers.get('Gov-Client-Public-IP', '')
+#         server_public_ip = get_vendor_public_ip()
 
-#     # Get proxy chain from request headers (if exists)
-#     forwarded_ips = frappe.local.request.headers.get('X-Forwarded-For', '')
-#     proxy_chain = [ip.strip() for ip in forwarded_ips.split(',') if ip.strip()]
+#         if not (client_public_ip and is_public_ip(client_public_ip)):
+#             return ""
+#         if not (server_public_ip and is_public_ip(server_public_ip)):
+#             return ""
 
-#     # Insert client_ip at start if valid
-#     if client_ip and is_public_ip(client_ip):
-#         if not proxy_chain or proxy_chain[0] != client_ip:
-#             proxy_chain.insert(0, client_ip)
-
-#     # Server's public IP
-#     server_ip = get_server_public_ip()
-
-#     if not server_ip:
-#         return ""   # No valid server IP → cannot generate
-
-#     # Build hop sequence
-#     prev = None
-#     for ip in proxy_chain:
-#         if is_public_ip(ip):
-#             if prev is None:
-#                 # First hop → by = server, for = client
-#                 hops.append(f"by={server_ip}&for={ip}")
-#             else:
-#                 # Subsequent → by = prev, for = current
-#                 hops.append(f"by={prev}&for={ip}")
-#             prev = ip
-
-#     return ",".join(hops)
-
-def get_vendor_forwarded():
-    """
-    Build the Gov-Vendor-Forwarded header automatically.
-    """
-    try:
-        client_public_ip = get_public_ip() or frappe.local.request.headers.get('Gov-Client-Public-IP', '')
-        server_public_ip = get_vendor_public_ip()
-
-        if not (client_public_ip and is_public_ip(client_public_ip)):
-            return ""
-        if not (server_public_ip and is_public_ip(server_public_ip)):
-            return ""
-
-        # Get proxy chain but be more strict about validation
-        x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
-        proxy_chain = [ip.strip() for ip in x_forwarded_for.split(',') if ip.strip() and is_public_ip(ip.strip())]
+#         # Get proxy chain but be more strict about validation
+#         x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
+#         proxy_chain = [ip.strip() for ip in x_forwarded_for.split(',') if ip.strip() and is_public_ip(ip.strip())]
         
-        # FILTER OUT CLIENT IP FROM PROXY CHAIN
-        proxy_chain = [ip for ip in proxy_chain if ip != client_public_ip]
+#         # FILTER OUT CLIENT IP FROM PROXY CHAIN
+#         proxy_chain = [ip for ip in proxy_chain if ip != client_public_ip]
         
-        hops = []
+#         hops = []
         
-        if proxy_chain and len(proxy_chain) >= 2:  # Only use if we have actual proxies
-            # Complex case with actual proxies
-            all_ips = [client_public_ip] + proxy_chain
+#         if proxy_chain and len(proxy_chain) >= 2:  # Only use if we have actual proxies
+#             # Complex case with actual proxies
+#             all_ips = [client_public_ip] + proxy_chain
             
-            for i in range(len(all_ips) - 1):
-                if all_ips[i] != all_ips[i+1]:  # Avoid same-IP hops
-                    hop = f"by={quote(all_ips[i+1])}&for={quote(all_ips[i])}"
-                    hops.append(hop)
+#             for i in range(len(all_ips) - 1):
+#                 if all_ips[i] != all_ips[i+1]:  # Avoid same-IP hops
+#                     hop = f"by={quote(all_ips[i+1])}&for={quote(all_ips[i])}"
+#                     hops.append(hop)
             
-            # Final hop to your server
-            if all_ips[-1] != server_public_ip:  # Avoid duplicate final hop
-                final_hop = f"by={quote(server_public_ip)}&for={quote(all_ips[-1])}"
-                hops.append(final_hop)
-        else:
-            # Simple direct connection
-            if client_public_ip != server_public_ip:  # Only add if different IPs
-                hop = f"by={quote(server_public_ip)}&for={quote(client_public_ip)}"
-                hops.append(hop)
+#             # Final hop to your server
+#             if all_ips[-1] != server_public_ip:  # Avoid duplicate final hop
+#                 final_hop = f"by={quote(server_public_ip)}&for={quote(all_ips[-1])}"
+#                 hops.append(final_hop)
+#         else:
+#             # Simple direct connection
+#             if client_public_ip != server_public_ip:  # Only add if different IPs
+#                 hop = f"by={quote(server_public_ip)}&for={quote(client_public_ip)}"
+#                 hops.append(hop)
 
-        return ",".join(hops) if hops else ""
+#         return ",".join(hops) if hops else ""
 
-    except Exception as e:
-        frappe.logger().error(f"Vendor-Forwarded Error: {str(e)}")
-        return ""
+#     except Exception as e:
+#         frappe.logger().error(f"Vendor-Forwarded Error: {str(e)}")
+#         return ""
 
 
 def get_license_ids():
@@ -1285,97 +1253,44 @@ def get_license_ids():
     except Exception:
         return ""  # Omit entirely if data is unavailable
 
+# for single HOP
 # def get_vendor_public_ip():
-#     """Get the public IP of YOUR infrastructure (WAF/LB/Server) that received the request"""
+#     """
+#     Automatically determine the public IP of YOUR backend/server infrastructure.
+#     PRIORITY: Server's actual public IP > Proxy headers
+#     """
 #     try:
-#         # 1️⃣ Try X-Forwarded-For (last hop - closest to your infrastructure)
+#         # 1️⃣ FIRST PRIORITY: Get server's actual public IP via external service
+#         server_public_ip = get_server_public_ip()
+#         if server_public_ip and is_public_ip(server_public_ip):
+#             frappe.logger().debug(f"Using server public IP: {server_public_ip}")
+#             return server_public_ip
+
+#         # 2️⃣ SECONDARY: Check if we're behind a proxy/load balancer
+#         # Only use these if they represent YOUR infrastructure, not client IPs
+        
+#         # Try X-Forwarded-Server (usually contains load balancer hostname/IP)
+#         x_forwarded_server = frappe.local.request.headers.get('X-Forwarded-Server', '')
+#         if x_forwarded_server and is_public_ip(x_forwarded_server):
+#             frappe.logger().debug(f"Using X-Forwarded-Server IP: {x_forwarded_server}")
+#             return x_forwarded_server
+
+#         # 3️⃣ LAST RESORT: Check last hop in X-Forwarded-For (closest to your server)
 #         x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
 #         if x_forwarded_for:
-#             ips = [ip.strip() for ip in x_forwarded_for.split(',')]
-#             last_proxy_ip = ips[-1] if ips else ''
-#             if last_proxy_ip and is_public_ip(last_proxy_ip):
-#                 return last_proxy_ip
+#             ips = [ip.strip() for ip in x_forwarded_for.split(',') if ip.strip()]
+#             if ips:
+#                 last_proxy_ip = ips[-1]
+#                 if is_public_ip(last_proxy_ip):
+#                     frappe.logger().debug(f"Using last X-Forwarded-For IP: {last_proxy_ip}")
+#                     return last_proxy_ip
 
-#         # 2️⃣ Common proxy headers
-#         proxy_headers = [
-#             'X-Real-IP',
-#             'X-Forwarded-Server',
-#             'CF-Connecting-IP',
-#             'True-Client-IP'
-#         ]
-#         for header in proxy_headers:
-#             ip = frappe.local.request.headers.get(header, '').split(':')[0].strip()
-#             if ip and is_public_ip(ip):
-#                 return ip
-
-#         # 3️⃣ Config-defined public IP (static server config)
-#         if hasattr(frappe.conf, 'vm_public_ip') and frappe.conf.vm_public_ip:
-#             return frappe.conf.vm_public_ip
-
-#         # 4️⃣ Parse Gov-Vendor-Forwarded header
-#         vendor_forwarded = frappe.local.request.headers.get('Gov-Vendor-Forwarded', '')
-#         if vendor_forwarded:
-#             hops = vendor_forwarded.split(',')
-#             for hop in hops:
-#                 # ✅ Prefer the "by=" (server/WAF/LB public IP)
-#                 if 'by=' in hop:
-#                     by_part = hop.split('by=')[1].split('&')[0].strip()
-#                     if by_part and is_public_ip(by_part):
-#                         return by_part
-#             # fallback to "for=" if "by=" not found or private
-#             for hop in hops:
-#                 if 'for=' in hop:
-#                     for_part = hop.split('for=')[1].split('&')[0].strip()
-#                     if for_part and is_public_ip(for_part):
-#                         return for_part
-
-#         # 5️⃣ Fallback - use client public IP if infrastructure not visible
-#         client_public_ip = frappe.local.request.headers.get('Gov-Client-Public-IP', '')
-#         if client_public_ip and is_public_ip(client_public_ip):
-#             return client_public_ip
-
-#         return ""  # Final fallback
-
-#     except Exception:
+#         frappe.logger().warning("Could not determine vendor public IP")
 #         return ""
 
-def get_vendor_public_ip():
-    """
-    Automatically determine the public IP of YOUR backend/server infrastructure.
-    PRIORITY: Server's actual public IP > Proxy headers
-    """
-    try:
-        # 1️⃣ FIRST PRIORITY: Get server's actual public IP via external service
-        server_public_ip = get_server_public_ip()
-        if server_public_ip and is_public_ip(server_public_ip):
-            frappe.logger().debug(f"Using server public IP: {server_public_ip}")
-            return server_public_ip
-
-        # 2️⃣ SECONDARY: Check if we're behind a proxy/load balancer
-        # Only use these if they represent YOUR infrastructure, not client IPs
-        
-        # Try X-Forwarded-Server (usually contains load balancer hostname/IP)
-        x_forwarded_server = frappe.local.request.headers.get('X-Forwarded-Server', '')
-        if x_forwarded_server and is_public_ip(x_forwarded_server):
-            frappe.logger().debug(f"Using X-Forwarded-Server IP: {x_forwarded_server}")
-            return x_forwarded_server
-
-        # 3️⃣ LAST RESORT: Check last hop in X-Forwarded-For (closest to your server)
-        x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
-        if x_forwarded_for:
-            ips = [ip.strip() for ip in x_forwarded_for.split(',') if ip.strip()]
-            if ips:
-                last_proxy_ip = ips[-1]
-                if is_public_ip(last_proxy_ip):
-                    frappe.logger().debug(f"Using last X-Forwarded-For IP: {last_proxy_ip}")
-                    return last_proxy_ip
-
-        frappe.logger().warning("Could not determine vendor public IP")
-        return ""
-
-    except Exception as e:
-        frappe.logger().error(f"Error in get_vendor_public_ip: {str(e)}")
-        return ""
+#     except Exception as e:
+#         frappe.logger().error(f"Error in get_vendor_public_ip: {str(e)}")
+#         return ""
 
 
 
@@ -1479,6 +1394,111 @@ def get_timezone():
 #     except Exception as e:
 #         frappe.log_error("Header Validation Error", str(e))
 #         return {"success": False, "message": f"Validation failed: {str(e)}"}
+
+# for multiple HOP
+
+def get_vendor_forwarded():
+    """
+    Build the Gov-Vendor-Forwarded header for both simple and complex architectures.
+    Handles: Client → WAF → Load Balancer → Your Server
+    """
+    try:
+        client_public_ip = get_public_ip() or frappe.local.request.headers.get('Gov-Client-Public-IP', '')
+        server_public_ip = get_vendor_public_ip()
+
+        if not (client_public_ip and is_public_ip(client_public_ip)):
+            return ""
+        if not (server_public_ip and is_public_ip(server_public_ip)):
+            return ""
+
+        # Get the complete proxy chain from headers
+        x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
+        proxy_chain = [ip.strip() for ip in x_forwarded_for.split(',') if ip.strip() and is_public_ip(ip.strip())]
+        
+        hops = []
+        
+        if proxy_chain:
+            # MULTI-HOP CASE: Client → Proxy1 → Proxy2 → Your Server
+            
+            # Remove client IP if it's accidentally in the chain
+            proxy_chain = [ip for ip in proxy_chain if ip != client_public_ip]
+            
+            # Build complete chain: Client + All Proxies
+            all_ips = [client_public_ip] + proxy_chain
+            
+            # Create hops for each connection
+            for i in range(len(all_ips) - 1):
+                current_ip = all_ips[i]
+                next_ip = all_ips[i + 1]
+                
+                # Only add hop if IPs are different and both public
+                if current_ip != next_ip and is_public_ip(current_ip) and is_public_ip(next_ip):
+                    hop = f"by={quote(next_ip)}&for={quote(current_ip)}"
+                    hops.append(hop)
+                    frappe.logger().debug(f"Added hop {i+1}: {hop}")
+            
+            # Final hop: Last proxy → Your actual server
+            if all_ips[-1] != server_public_ip and is_public_ip(all_ips[-1]):
+                final_hop = f"by={quote(server_public_ip)}&for={quote(all_ips[-1])}"
+                hops.append(final_hop)
+                frappe.logger().debug(f"Added final hop: {final_hop}")
+                
+        else:
+            # SIMPLE CASE: Client → Your Server directly
+            if client_public_ip != server_public_ip:
+                hop = f"by={quote(server_public_ip)}&for={quote(client_public_ip)}"
+                hops.append(hop)
+                frappe.logger().debug(f"Simple direct hop: {hop}")
+
+        result = ",".join(hops)
+        frappe.logger().info(f"Final Gov-Vendor-Forwarded: {result}")
+        return result
+
+    except Exception as e:
+        frappe.logger().error(f"Vendor-Forwarded Error: {str(e)}")
+        return ""
+
+def get_vendor_public_ip():
+    """
+    Enhanced to handle multiple infrastructure layers
+    """
+    try:
+        # 1️⃣ FIRST: Check if we have multiple proxies (WAF → Load Balancer → Server)
+        x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
+        if x_forwarded_for:
+            ips = [ip.strip() for ip in x_forwarded_for.split(',') if ip.strip()]
+            if ips:
+                # Last IP in X-Forwarded-For is closest to your server (often your infrastructure)
+                last_proxy_ip = ips[-1]
+                if is_public_ip(last_proxy_ip):
+                    frappe.logger().debug(f"Using last X-Forwarded-For IP as vendor IP: {last_proxy_ip}")
+                    return last_proxy_ip
+
+        # 2️⃣ SECOND: Infrastructure-specific headers
+        infrastructure_headers = {
+            'X-Forwarded-Server': 'Load Balancer',
+            'X-Real-IP': 'Reverse Proxy', 
+            'CF-Connecting-IP': 'Cloudflare WAF',
+            'True-Client-IP': 'Akamai WAF'
+        }
+        
+        for header, description in infrastructure_headers.items():
+            ip = frappe.local.request.headers.get(header, '').split(':')[0].strip()
+            if ip and is_public_ip(ip):
+                frappe.logger().debug(f"Using {description} IP as vendor IP: {ip}")
+                return ip
+
+        # 3️⃣ FALLBACK: Server's actual public IP
+        server_ip = get_server_public_ip()
+        if server_ip and is_public_ip(server_ip):
+            frappe.logger().debug(f"Using server public IP: {server_ip}")
+            return server_ip
+
+        return ""
+
+    except Exception as e:
+        frappe.logger().error(f"Vendor Public IP Error: {str(e)}")
+        return ""
 
 @frappe.whitelist()
 def validate_fraud_headers():
