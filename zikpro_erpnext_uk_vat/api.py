@@ -1223,61 +1223,48 @@ def get_server_public_ip():
 def get_vendor_forwarded():
     """
     Build the Gov-Vendor-Forwarded header automatically.
-    Format: by=<server-public-ip>&for=<client-public-ip>
     """
     try:
-        # Get client IP (from our detection or header)
         client_public_ip = get_public_ip() or frappe.local.request.headers.get('Gov-Client-Public-IP', '')
-        if not client_public_ip or not is_public_ip(client_public_ip):
-            frappe.logger().warning(f"Invalid client IP for Vendor-Forwarded: {client_public_ip}")
-            return ""
-
-        # Get server IP (YOUR infrastructure)
         server_public_ip = get_vendor_public_ip()
-        if not server_public_ip or not is_public_ip(server_public_ip):
-            frappe.logger().warning(f"Invalid server IP for Vendor-Forwarded: {server_public_ip}")
+
+        if not (client_public_ip and is_public_ip(client_public_ip)):
+            return ""
+        if not (server_public_ip and is_public_ip(server_public_ip)):
             return ""
 
-        # Get proxy chain from X-Forwarded-For
+        # Get proxy chain but be more strict about validation
         x_forwarded_for = frappe.local.request.headers.get('X-Forwarded-For', '')
         proxy_chain = [ip.strip() for ip in x_forwarded_for.split(',') if ip.strip() and is_public_ip(ip.strip())]
         
+        # FILTER OUT CLIENT IP FROM PROXY CHAIN
+        proxy_chain = [ip for ip in proxy_chain if ip != client_public_ip]
+        
         hops = []
         
-        if proxy_chain:
-            # COMPLEX CASE: Client → Proxy1 → Proxy2 → Your Server
-            
-            # Verify client IP matches first proxy (sanity check)
-            if proxy_chain[0] != client_public_ip:
-                frappe.logger().debug(f"Client IP {client_public_ip} doesn't match first proxy {proxy_chain[0]}")
-                # Still proceed, but log the discrepancy
-            
-            # Build hops for each connection
+        if proxy_chain and len(proxy_chain) >= 2:  # Only use if we have actual proxies
+            # Complex case with actual proxies
             all_ips = [client_public_ip] + proxy_chain
             
             for i in range(len(all_ips) - 1):
-                # Each hop: by=receiving_server, for=sending_client
-                hop = f"by={quote(all_ips[i+1])}&for={quote(all_ips[i])}"
-                hops.append(hop)
-                frappe.logger().debug(f"Added hop: {hop}")
+                if all_ips[i] != all_ips[i+1]:  # Avoid same-IP hops
+                    hop = f"by={quote(all_ips[i+1])}&for={quote(all_ips[i])}"
+                    hops.append(hop)
             
-            # Final hop: Last proxy → Your server
-            final_hop = f"by={quote(server_public_ip)}&for={quote(all_ips[-1])}"
-            hops.append(final_hop)
-            frappe.logger().debug(f"Added final hop: {final_hop}")
-            
+            # Final hop to your server
+            if all_ips[-1] != server_public_ip:  # Avoid duplicate final hop
+                final_hop = f"by={quote(server_public_ip)}&for={quote(all_ips[-1])}"
+                hops.append(final_hop)
         else:
-            # SIMPLE CASE: Client → Your Server directly
-            hop = f"by={quote(server_public_ip)}&for={quote(client_public_ip)}"
-            hops.append(hop)
-            frappe.logger().debug(f"Simple direct hop: {hop}")
+            # Simple direct connection
+            if client_public_ip != server_public_ip:  # Only add if different IPs
+                hop = f"by={quote(server_public_ip)}&for={quote(client_public_ip)}"
+                hops.append(hop)
 
-        result = ",".join(hops)
-        frappe.logger().debug(f"Final Gov-Vendor-Forwarded: {result}")
-        return result
+        return ",".join(hops) if hops else ""
 
     except Exception as e:
-        frappe.logger().error(f"Vendor-Forwarded Header Generation Error: {str(e)}")
+        frappe.logger().error(f"Vendor-Forwarded Error: {str(e)}")
         return ""
 
 
