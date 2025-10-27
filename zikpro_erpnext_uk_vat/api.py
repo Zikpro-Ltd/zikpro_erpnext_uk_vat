@@ -21,9 +21,13 @@ import ipaddress
 
 
 # HMRC OAuth 2.0 Configuration
-HMRC_AUTH_URL = "https://test-api.service.hmrc.gov.uk/oauth/authorize"
-HMRC_TOKEN_URL = "https://test-api.service.hmrc.gov.uk/oauth/token"
-HMRC_API_BASE_URL = "https://test-api.service.hmrc.gov.uk"
+# HMRC_AUTH_URL = "https://test-api.service.hmrc.gov.uk/oauth/authorize"
+# HMRC_TOKEN_URL = "https://test-api.service.hmrc.gov.uk/oauth/token"
+# HMRC_API_BASE_URL = "https://test-api.service.hmrc.gov.uk"
+
+HMRC_AUTH_URL = "https://api.service.hmrc.gov.uk/oauth/authorize"
+HMRC_TOKEN_URL = "https://api.service.hmrc.gov.uk/oauth/token"
+HMRC_API_BASE_URL = "https://api.service.hmrc.gov.uk"
 
 @frappe.whitelist()
 def start_oauth_flow(docname):
