@@ -3,6 +3,7 @@ import base64
 import frappe
 import requests
 import json
+import jwt
 from frappe.utils import now_datetime, add_to_date, nowdate, getdate, formatdate
 from requests.auth import HTTPBasicAuth
 from urllib.parse import quote, urlencode
@@ -21,176 +22,207 @@ import ipaddress
 
 
 # HMRC OAuth 2.0 Configuration
-# HMRC_AUTH_URL = "https://test-api.service.hmrc.gov.uk/oauth/authorize"
-# HMRC_TOKEN_URL = "https://test-api.service.hmrc.gov.uk/oauth/token"
-# HMRC_API_BASE_URL = "https://test-api.service.hmrc.gov.uk"
+HMRC_AUTH_URL = "https://test-api.service.hmrc.gov.uk/oauth/authorize"
+HMRC_TOKEN_URL = "https://test-api.service.hmrc.gov.uk/oauth/token"
+HMRC_API_BASE_URL = "https://test-api.service.hmrc.gov.uk"
 
-HMRC_AUTH_URL = "https://api.service.hmrc.gov.uk/oauth/authorize"
-HMRC_TOKEN_URL = "https://api.service.hmrc.gov.uk/oauth/token"
-HMRC_API_BASE_URL = "https://api.service.hmrc.gov.uk"
+# HMRC_AUTH_URL = "https://api.service.hmrc.gov.uk/oauth/authorize"
+# HMRC_TOKEN_URL = "https://api.service.hmrc.gov.uk/oauth/token"
+# HMRC_API_BASE_URL = "https://api.service.hmrc.gov.uk"
+
+# @frappe.whitelist()
+# def start_oauth_flow(docname):
+#     doc = frappe.get_doc("VAT Settings", docname)
+#     client_id = doc.client_id
+#     redirect_uri = doc.redirect_url
+
+#     auth_url = (
+#         f"{HMRC_AUTH_URL}?response_type=code&"
+#         f"client_id={client_id}&"
+#         f"redirect_uri={redirect_uri}&"
+#         f"scope=read:vat+write:vat&"  
+#         f"state={docname}"  
+#     )
+#     return auth_url
+
+# @frappe.whitelist(allow_guest=True)
+# def oauth_callback():
+#     code = frappe.form_dict.get("code")
+#     state = frappe.form_dict.get("state")
+
+#     if not code or not state:
+#         frappe.throw("Authorization code or state not found in the callback URL.")
+
+#     doc = frappe.get_doc("VAT Settings", state)
+#     client_id = doc.client_id
+#     client_secret = doc.get_password('client_secret')
+#     redirect_uri = doc.redirect_url
+
+#     payload = {
+#         "grant_type": "authorization_code",
+#         "code": code,
+#         "redirect_uri": redirect_uri,
+#         "client_id": client_id,  
+#         "client_secret": client_secret
+#     }
+#     headers = {
+#         "Content-Type": "application/x-www-form-urlencoded",
+#     }
+
+#     auth = HTTPBasicAuth(client_id, client_secret)
+
+#     try:
+#         response = requests.post(HMRC_TOKEN_URL, data=payload, headers=headers, auth=auth)
+
+#         if response.status_code == 200:
+#             token_data = response.json()
+#             access_token = token_data["access_token"]
+#             refresh_token = token_data["refresh_token"]
+#             expires_in = token_data["expires_in"]
+
+#             token_expiry = add_to_date(now_datetime(), seconds=expires_in)
+
+#             doc.access_token = access_token
+#             doc.refresh_token = refresh_token
+#             doc.token_expiry = token_expiry
+#             doc.status = "Authorized"
+#             doc.save()
+#             frappe.db.commit()
+
+#             frappe.local.response["type"] = "redirect"
+#             frappe.local.response["location"] = f"/app/vat-settings/{state}"
+
+#         else:
+#             frappe.throw(f"Error: {response.status_code}, {response.text}")
+
+#     except requests.exceptions.RequestException as e:
+#         frappe.throw(f"Request failed: {e}")
 
 @frappe.whitelist()
 def start_oauth_flow(docname):
     doc = frappe.get_doc("VAT Settings", docname)
     client_id = doc.client_id
-    redirect_uri = doc.redirect_url
+    
+    # YOUR fixed redirect URI
+    registered_redirect = "https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.oauth_callback"
+    
+    # Generate a unique request ID
+    request_id = frappe.generate_hash(length=20)
+    
+    # Store temporarily in your site's cache/db
+    cache_key = f"hmrc_request_{request_id}"
+    frappe.cache().set_value(cache_key, {
+        "docname": docname,
+        "user_site": frappe.local.site,
+        "expires": 300  # 5 minutes
+    }, expires_in_sec=300)
+    
+    state = request_id  # Just use the request ID, not encoded JSON
 
     auth_url = (
         f"{HMRC_AUTH_URL}?response_type=code&"
         f"client_id={client_id}&"
-        f"redirect_uri={redirect_uri}&"
+        f"redirect_uri={registered_redirect}&"
         f"scope=read:vat+write:vat&"  
-        f"state={docname}"  
+        f"state={state}"
     )
     return auth_url
 
 @frappe.whitelist(allow_guest=True)
 def oauth_callback():
     code = frappe.form_dict.get("code")
-    state = frappe.form_dict.get("state")
-
-    if not code or not state:
-        frappe.throw("Authorization code or state not found in the callback URL.")
-
-    doc = frappe.get_doc("VAT Settings", state)
+    request_id = frappe.form_dict.get("state")
+    
+    # Get request data from cache
+    cache_key = f"hmrc_request_{request_id}"
+    request_data = frappe.cache().get_value(cache_key)
+    
+    if not request_data:
+        frappe.throw("Invalid or expired request")
+    
+    docname = request_data["docname"]
+    user_site = request_data["user_site"]
+    
+    # Get client details
+    doc = frappe.get_doc("VAT Settings", docname)
     client_id = doc.client_id
     client_secret = doc.get_password('client_secret')
-    redirect_uri = doc.redirect_url
-
+    redirect_uri = "https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.oauth_callback"
+    
+    # Exchange code for tokens
     payload = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": redirect_uri,
-        "client_id": client_id,  
+        "client_id": client_id,
         "client_secret": client_secret
     }
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-    }
-
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     auth = HTTPBasicAuth(client_id, client_secret)
-
-    try:
-        response = requests.post(HMRC_TOKEN_URL, data=payload, headers=headers, auth=auth)
-
-        if response.status_code == 200:
-            token_data = response.json()
-            access_token = token_data["access_token"]
-            refresh_token = token_data["refresh_token"]
-            expires_in = token_data["expires_in"]
-
-            token_expiry = add_to_date(now_datetime(), seconds=expires_in)
-
-            doc.access_token = access_token
-            doc.refresh_token = refresh_token
-            doc.token_expiry = token_expiry
-            doc.status = "Authorized"
-            doc.save()
-            frappe.db.commit()
-
-            frappe.local.response["type"] = "redirect"
-            frappe.local.response["location"] = f"/app/vat-settings/{state}"
-
-        else:
-            frappe.throw(f"Error: {response.status_code}, {response.text}")
-
-    except requests.exceptions.RequestException as e:
-        frappe.throw(f"Request failed: {e}")
-
-def make_hmrc_request(method, endpoint, docname, params=None, json_data=None, retry_count=0):
-    """
-    Helper function to make authenticated HMRC API requests with automatic token refresh
-    """
-    try:
-        doc = frappe.get_doc("VAT Settings", docname)
-        if not doc.access_token:
-            return {"error": "Access token not found in VAT Settings", "success": False}
-
-        access_token = doc.get_password("access_token")
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/vnd.hmrc.1.0+json",
-            "Content-Type": "application/json",
-            **get_fraud_prevention_headers()  # Include all headers
-        }
+    
+    response = requests.post(HMRC_TOKEN_URL, data=payload, headers=headers, auth=auth)
+    
+    if response.status_code == 200:
+        token_data = response.json()
         
-        url = f"{HMRC_API_BASE_URL}{endpoint}"
+        # Store tokens temporarily (they'll be fetched by user's site)
+        token_cache_key = f"hmrc_tokens_{request_id}"
+        frappe.cache().set_value(token_cache_key, {
+            "docname": docname,
+            "access_token": token_data["access_token"],
+            "refresh_token": token_data["refresh_token"],
+            "expires_in": token_data["expires_in"]
+        }, expires_in_sec=60)  # 1 minute to fetch
         
-        try:
-            response = requests.request(
-                method,
-                url,
-                headers=headers,
-                params=params,
-                json=json_data,
-                timeout=30
-            )
-        except requests.exceptions.RequestException as e:
-            return {"error": f"Request failed: {str(e)}", "success": False}
+        # Redirect user back to their site with the request ID
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.fetch_tokens?request_id={request_id}"
+    else:
+        frappe.throw(f"Error: {response.status_code}, {response.text}")
 
-        log_msg = (
-            f"HMRC API Request:\n"
-            f"Method: {method}\n"
-            f"URL: {url}\n"
-            f"Headers: {headers}\n"
-            f"Params: {params}\n"
-            f"Status Code: {response.status_code}\n"
-            f"Response: {response.text[:500]}"
-        )
-        frappe.log_error(title="HMRC API Debug", message=log_msg)
+@frappe.whitelist()
+def fetch_tokens():
+    request_id = frappe.form_dict.get("request_id")
+    
+    if not request_id:
+        frappe.throw("Missing request ID")
+    
+    # Call YOUR site to get the tokens
+    response = requests.get(
+        f"https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.get_tokens",
+        params={"request_id": request_id}
+    )
+    
+    if response.status_code == 200:
+        token_data = response.json()
+        
+        # Save to VAT Settings
+        doc = frappe.get_doc("VAT Settings", token_data["docname"])
+        doc.access_token = token_data["access_token"]
+        doc.refresh_token = token_data["refresh_token"]
+        doc.token_expiry = add_to_date(now_datetime(), seconds=int(token_data["expires_in"]))
+        doc.status = "Authorized"
+        doc.save()
+        frappe.db.commit()
+        
+        # Redirect to VAT Settings page
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = f"/app/vat-settings/{token_data['docname']}"
+    else:
+        frappe.throw("Failed to retrieve tokens")
 
-        # Handle token expiration (401) - attempt refresh once
-        if response.status_code == 401 and retry_count == 0:
-            if "expired" in response.text.lower() or "INVALID_CREDENTIALS" in response.text:
-                frappe.log_error("Access token invalid/expired, attempting refresh...")
-                refresh_result = refresh_access_token(docname)
-                
-                if not refresh_result.get("success"):
-                    return {
-                        "error": f"Token refresh failed: {refresh_result.get('error', 'Unknown error')}",
-                        "success": False
-                    }
-                
-                # Retry with new token
-                return make_hmrc_request(
-                    method, endpoint, docname, 
-                    params, json_data, retry_count + 1
-                )
-
-        # Handle other error responses
-        if response.status_code >= 400:
-            try:
-                error_data = response.json()
-                error_msg = f"HMRC API Error ({response.status_code}): {error_data.get('message', 'No error message')}"
-                if 'code' in error_data:
-                    error_msg += f" (code: {error_data['code']})"
-                return {
-                    "error": error_msg,
-                    "status_code": response.status_code,
-                    "response_text": response.text,
-                    "success": False
-                }
-            except ValueError:
-                return {
-                    "error": f"HMRC API Error ({response.status_code}): {response.text}",
-                    "success": False
-                }
-        try:
-            return {
-                "status_code": response.status_code,
-                "data": response.json() if response.content else None,
-                "success": True
-            }
-        except ValueError:
-            return {
-                "error": f"Invalid JSON response: {response.text}",
-                "success": False
-            }
-
-    except Exception as e:
-        error_msg = f"Unexpected error in make_hmrc_request: {str(e)}"
-        frappe.log_error("HMRC Request Error", error_msg)
-        return {"error": error_msg, "success": False}
+@frappe.whitelist(allow_guest=True)
+def get_tokens():
+    request_id = frappe.form_dict.get("request_id")
+    
+    # Get tokens from cache
+    token_cache_key = f"hmrc_tokens_{request_id}"
+    token_data = frappe.cache().get_value(token_cache_key)
+    
+    if not token_data:
+        frappe.throw("Tokens not found or expired")
+    
+    return token_data
 
 @frappe.whitelist()
 def refresh_access_token(docname):
@@ -278,7 +310,8 @@ def fetch_all_obligations(frequency, from_date=None, to_date=None):
         if not default_company:
             frappe.throw("No default company set in Global Defaults.")
         
-        vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        # vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        vrn = frappe.db.get_value("Company", default_company, "uk_vat_registration_number")
         if not vrn:
             frappe.throw(f"VRN not set for company {default_company}.")
         
@@ -515,7 +548,8 @@ def calculate_eu_transactions(start_date, end_date):
         filters={
             "posting_date": ["between", [start_date, end_date]],
             "docstatus": 1,
-            "custom_is_eu_supplier": 1
+            # "custom_is_eu_supplier": 1
+            "is_eu_supplier": 1
         },
         fields=["base_grand_total", "base_total_taxes_and_charges"]
     )
@@ -526,7 +560,8 @@ def calculate_eu_transactions(start_date, end_date):
         filters={
             "posting_date": ["between", [start_date, end_date]],
             "docstatus": 1,
-            "custom_is_eu_customer": 1
+            # "custom_is_eu_customer": 1
+            "is_eu_customer": 1
         },
         fields=["base_grand_total", "base_total_taxes_and_charges"]
     )
@@ -553,7 +588,8 @@ def submit_vat_return_to_hmrc(docname):
         if not default_company:
             frappe.throw("No default company set in Global Defaults.")
             
-        vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        # vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        vrn = frappe.db.get_value("Company", default_company, "uk_vat_registration_number")
         if not vrn:
             frappe.throw(f"VRN not set for company {default_company}.")
 
@@ -688,7 +724,8 @@ def fetch_liabilities(from_date=None, to_date=None):
         if not default_company:
             frappe.throw("No default company set in Global Defaults.")
             
-        vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        # vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        vrn = frappe.db.get_value("Company", default_company, "uk_vat_registration_number")
         if not vrn:
             frappe.throw(f"VAT Registration Number not set for company {default_company}")
 
@@ -757,7 +794,8 @@ def fetch_payments(from_date=None, to_date=None):
         if not default_company:
             frappe.throw("No default company set in Global Defaults.")
             
-        vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        # vrn = frappe.db.get_value("Company", default_company, "custom_uk_vat_registration_number")
+        vrn = frappe.db.get_value("Company", default_company, "uk_vat_registration_number")
         if not vrn:
             frappe.throw(f"VAT Registration Number not set for company {default_company}")
 

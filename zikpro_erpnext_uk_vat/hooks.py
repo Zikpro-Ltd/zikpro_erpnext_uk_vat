@@ -35,6 +35,8 @@ after_migrate = [
 
 # after_install = "zikpro_erpnext_uk_vat.utils.create_initial_records"
 
+after_install = "zikpro_erpnext_uk_vat.install.after_install"
+
 # boot_session = "zikpro_erpnext_uk_vat.utils.patch_twofactor"
 
 socketio_handlers = [
