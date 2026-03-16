@@ -174,6 +174,8 @@ def oauth_callback():
             "expires_in": token_data["expires_in"]
         }, expires_in_sec=300)  # 1 minute to fetch
         
+        frappe.cache().delete_value(cache_key)
+
         # Redirect user back to their site with the request ID
         frappe.local.response["type"] = "redirect"
         frappe.local.response["location"] = f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.fetch_tokens?request_id={request_id}"
@@ -183,76 +185,70 @@ def oauth_callback():
 @frappe.whitelist()
 def fetch_tokens():
     request_id = frappe.form_dict.get("request_id")
-    # frappe.log_error(f"Fetch tokens called with request_id: {request_id}", "HMRC Debug")
     
     if not request_id:
         frappe.throw("Missing request ID")
 
     frappe.log_error(f"Fetching tokens for request_id: {request_id}", "HMRC Fetch Start")
     
-    # Call YOUR site to get the tokens
-    response = requests.get(
-        f"https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.get_tokens",
-        params={"request_id": request_id}
-    )
-
-    # frappe.log_error(f"Token fetch status: {response.status_code}", "HMRC Debug")
-    frappe.log_error(f"get_tokens response status: {response.status_code}", "HMRC Fetch Status")
-
-    if response.status_code == 200:
-        token_data = response.json()
-        # frappe.log_error(f"Token data received: {token_data}", "HMRC Debug")
-        frappe.log_error(f"get_tokens response data: {token_data}", "HMRC Fetch Data")
-
-        # EXTRA CHECK - Ensure docname exists
-        if "docname" not in token_data:
-            frappe.log_error(f"CRITICAL: docname missing in response: {token_data}", "HMRC Fetch Error")
-            frappe.throw("Invalid token data received - missing docname")
-        
-        # Save to VAT Settings
-        doc = frappe.get_doc("VAT Settings", token_data["docname"])
-        doc.access_token = token_data["access_token"]
-        doc.refresh_token = token_data["refresh_token"]
-        doc.token_expiry = add_to_date(now_datetime(), seconds=int(token_data["expires_in"]))
-        doc.status = "Authorized"
-        doc.save()
-        frappe.db.commit()
-        
-        # Redirect to VAT Settings page
-        frappe.local.response["type"] = "redirect"
-        frappe.local.response["location"] = f"/app/vat-settings/{token_data['docname']}"
-    else:
-        frappe.throw("Failed to retrieve tokens")
-
-@frappe.whitelist(allow_guest=True)
-def get_tokens():
-    request_id = frappe.form_dict.get("request_id")
-    
-    # Get tokens from cache
+    # DIRECTLY get from cache - no API call needed!
     token_cache_key = f"hmrc_tokens_{request_id}"
     token_data = frappe.cache().get_value(token_cache_key)
     
-    # PEHLA DEBUG - Cache mein kya hai?
-    frappe.log_error(f"Raw cache data for {request_id}: {token_data}", "HMRC Cache Check")
+    frappe.log_error(f"Token data from cache: {token_data}", "HMRC Cache Direct")
     
     if not token_data:
-        frappe.log_error(f"No token data in cache for {request_id}", "HMRC Cache Miss")
-        frappe.throw("Tokens not found or expired")
+        frappe.throw("Tokens not found or expired. Please try authorizing again.")
     
-    # DOOSRA DEBUG - token_data ki keys kya hain?
-    frappe.log_error(f"Token data keys: {list(token_data.keys()) if token_data else 'None'}", "HMRC Keys")
-    
-    # Check if docname exists
     if "docname" not in token_data:
-        frappe.log_error(f"docname missing! Full token_data: {token_data}", "HMRC Critical Error")
-        frappe.throw(f"Invalid token data: docname missing. Keys: {list(token_data.keys())}")
+        frappe.log_error(f"CRITICAL: docname missing in cache: {token_data}", "HMRC Cache Error")
+        frappe.throw("Invalid token data in cache")
     
-    return {
-        "docname": token_data["docname"],
-        "access_token": token_data["access_token"],
-        "refresh_token": token_data["refresh_token"],
-        "expires_in": token_data["expires_in"]
-    }
+    # Save to VAT Settings
+    doc = frappe.get_doc("VAT Settings", token_data["docname"])
+    doc.access_token = token_data["access_token"]
+    doc.refresh_token = token_data["refresh_token"]
+    doc.token_expiry = add_to_date(now_datetime(), seconds=int(token_data["expires_in"]))
+    doc.status = "Authorized"
+    doc.save()
+    frappe.db.commit()
+    
+    # Clean up cache
+    frappe.cache().delete_value(token_cache_key)
+    
+    # Redirect to VAT Settings page
+    frappe.local.response["type"] = "redirect"
+    frappe.local.response["location"] = f"/app/vat-settings/{token_data['docname']}"
+
+# @frappe.whitelist(allow_guest=True)
+# def get_tokens():
+#     request_id = frappe.form_dict.get("request_id")
+    
+#     # Get tokens from cache
+#     token_cache_key = f"hmrc_tokens_{request_id}"
+#     token_data = frappe.cache().get_value(token_cache_key)
+    
+#     # PEHLA DEBUG - Cache mein kya hai?
+#     frappe.log_error(f"Raw cache data for {request_id}: {token_data}", "HMRC Cache Check")
+    
+#     if not token_data:
+#         frappe.log_error(f"No token data in cache for {request_id}", "HMRC Cache Miss")
+#         frappe.throw("Tokens not found or expired")
+    
+#     # DOOSRA DEBUG - token_data ki keys kya hain?
+#     frappe.log_error(f"Token data keys: {list(token_data.keys()) if token_data else 'None'}", "HMRC Keys")
+    
+#     # Check if docname exists
+#     if "docname" not in token_data:
+#         frappe.log_error(f"docname missing! Full token_data: {token_data}", "HMRC Critical Error")
+#         frappe.throw(f"Invalid token data: docname missing. Keys: {list(token_data.keys())}")
+    
+#     return {
+#         "docname": token_data["docname"],
+#         "access_token": token_data["access_token"],
+#         "refresh_token": token_data["refresh_token"],
+#         "expires_in": token_data["expires_in"]
+#     }
 
 @frappe.whitelist()
 def refresh_access_token(docname):
