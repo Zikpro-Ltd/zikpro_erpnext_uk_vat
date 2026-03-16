@@ -183,7 +183,7 @@ def oauth_callback():
 @frappe.whitelist()
 def fetch_tokens():
     request_id = frappe.form_dict.get("request_id")
-    frappe.log_error(f"Fetch tokens called with request_id: {request_id}", "HMRC Debug")
+    # frappe.log_error(f"Fetch tokens called with request_id: {request_id}", "HMRC Debug")
     
     if not request_id:
         frappe.throw("Missing request ID")
@@ -194,11 +194,11 @@ def fetch_tokens():
         params={"request_id": request_id}
     )
 
-    frappe.log_error(f"Token fetch status: {response.status_code}", "HMRC Debug")
+    # frappe.log_error(f"Token fetch status: {response.status_code}", "HMRC Debug")
 
     if response.status_code == 200:
         token_data = response.json()
-        frappe.log_error(f"Token data received: {token_data}", "HMRC Debug")
+        # frappe.log_error(f"Token data received: {token_data}", "HMRC Debug")
         
         # Save to VAT Settings
         doc = frappe.get_doc("VAT Settings", token_data["docname"])
