@@ -189,20 +189,19 @@ def fetch_tokens():
     if not request_id:
         frappe.throw("Missing request ID")
 
-    frappe.log_error(f"Fetching tokens for request_id: {request_id}", "HMRC Fetch Start")
-    
+    frappe.log_error(f"Fetch request_id: {request_id}", "HMRC Fetch Start")
+
     # DIRECTLY get from cache - no API call needed!
     token_cache_key = f"hmrc_tokens_{request_id}"
     token_data = frappe.cache().get_value(token_cache_key)
     
-    frappe.log_error(f"Token data from cache: {token_data}", "HMRC Cache Direct")
+    if token_data:
+        frappe.log_error(f"Keys: {list(token_data.keys())}", "HMRC Cache Keys")  # ✅ 30 chars
+    else:
+        frappe.log_error(f"No cache for {request_id}", "HMRC")  # ✅ 25 chars
     
     if not token_data:
-        frappe.throw("Tokens not found or expired. Please try authorizing again.")
-    
-    if "docname" not in token_data:
-        frappe.log_error(f"CRITICAL: docname missing in cache: {token_data}", "HMRC Cache Error")
-        frappe.throw("Invalid token data in cache")
+        frappe.throw("Tokens not found or expired. ")
     
     # Save to VAT Settings
     doc = frappe.get_doc("VAT Settings", token_data["docname"])
