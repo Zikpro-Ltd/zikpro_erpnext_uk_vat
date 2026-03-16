@@ -194,8 +194,8 @@ def fetch_tokens():
         params={"request_id": request_id}
     )
 
-    frappe.log_error(f"Response from get_tokens: {response.status_code} - {response.text}", "HMRC Debug")
-    
+    frappe.log_error(f"Token fetch status: {response.status_code}", "HMRC Debug")
+
     if response.status_code == 200:
         token_data = response.json()
         frappe.log_error(f"Token data received: {token_data}", "HMRC Debug")
