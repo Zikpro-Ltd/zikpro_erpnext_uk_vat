@@ -172,7 +172,7 @@ def oauth_callback():
             "access_token": token_data["access_token"],
             "refresh_token": token_data["refresh_token"],
             "expires_in": token_data["expires_in"]
-        }, expires_in_sec=60)  # 1 minute to fetch
+        }, expires_in_sec=300)  # 1 minute to fetch
         
         # Redirect user back to their site with the request ID
         frappe.local.response["type"] = "redirect"
@@ -199,6 +199,11 @@ def fetch_tokens():
     if response.status_code == 200:
         token_data = response.json()
         # frappe.log_error(f"Token data received: {token_data}", "HMRC Debug")
+
+        # EXTRA CHECK - Ensure docname exists
+        if "docname" not in token_data:
+            frappe.log_error(f"Invalid token data from get_tokens: {token_data}", "HMRC Critical")
+            frappe.throw("Invalid token data received - missing docname")
         
         # Save to VAT Settings
         doc = frappe.get_doc("VAT Settings", token_data["docname"])
@@ -225,6 +230,13 @@ def get_tokens():
     
     if not token_data:
         frappe.throw("Tokens not found or expired")
+
+    frappe.log_error(f"Cache data: {token_data}", "HMRC Debug")
+
+    # Check if docname exists
+    if "docname" not in token_data:
+        frappe.log_error(f"docname missing in token_data: {token_data}", "HMRC Error")
+        frappe.throw("Invalid token data: docname missing")
     
     return {
         "docname": token_data["docname"],
