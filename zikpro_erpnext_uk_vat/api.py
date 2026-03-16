@@ -187,6 +187,8 @@ def fetch_tokens():
     
     if not request_id:
         frappe.throw("Missing request ID")
+
+    frappe.log_error(f"Fetching tokens for request_id: {request_id}", "HMRC Fetch Start")
     
     # Call YOUR site to get the tokens
     response = requests.get(
@@ -195,14 +197,16 @@ def fetch_tokens():
     )
 
     # frappe.log_error(f"Token fetch status: {response.status_code}", "HMRC Debug")
+    frappe.log_error(f"get_tokens response status: {response.status_code}", "HMRC Fetch Status")
 
     if response.status_code == 200:
         token_data = response.json()
         # frappe.log_error(f"Token data received: {token_data}", "HMRC Debug")
+        frappe.log_error(f"get_tokens response data: {token_data}", "HMRC Fetch Data")
 
         # EXTRA CHECK - Ensure docname exists
         if "docname" not in token_data:
-            frappe.log_error(f"Invalid token data from get_tokens: {token_data}", "HMRC Critical")
+            frappe.log_error(f"CRITICAL: docname missing in response: {token_data}", "HMRC Fetch Error")
             frappe.throw("Invalid token data received - missing docname")
         
         # Save to VAT Settings
@@ -228,15 +232,20 @@ def get_tokens():
     token_cache_key = f"hmrc_tokens_{request_id}"
     token_data = frappe.cache().get_value(token_cache_key)
     
+    # PEHLA DEBUG - Cache mein kya hai?
+    frappe.log_error(f"Raw cache data for {request_id}: {token_data}", "HMRC Cache Check")
+    
     if not token_data:
+        frappe.log_error(f"No token data in cache for {request_id}", "HMRC Cache Miss")
         frappe.throw("Tokens not found or expired")
-
-    frappe.log_error(f"Cache data: {token_data}", "HMRC Debug")
-
+    
+    # DOOSRA DEBUG - token_data ki keys kya hain?
+    frappe.log_error(f"Token data keys: {list(token_data.keys()) if token_data else 'None'}", "HMRC Keys")
+    
     # Check if docname exists
     if "docname" not in token_data:
-        frappe.log_error(f"docname missing in token_data: {token_data}", "HMRC Error")
-        frappe.throw("Invalid token data: docname missing")
+        frappe.log_error(f"docname missing! Full token_data: {token_data}", "HMRC Critical Error")
+        frappe.throw(f"Invalid token data: docname missing. Keys: {list(token_data.keys())}")
     
     return {
         "docname": token_data["docname"],
