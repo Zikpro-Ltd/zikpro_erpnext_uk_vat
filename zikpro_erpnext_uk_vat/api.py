@@ -183,6 +183,7 @@ def oauth_callback():
 @frappe.whitelist()
 def fetch_tokens():
     request_id = frappe.form_dict.get("request_id")
+    frappe.log_error(f"Fetch tokens called with request_id: {request_id}", "HMRC Debug")
     
     if not request_id:
         frappe.throw("Missing request ID")
@@ -192,9 +193,12 @@ def fetch_tokens():
         f"https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.get_tokens",
         params={"request_id": request_id}
     )
+
+    frappe.log_error(f"Response from get_tokens: {response.status_code} - {response.text}", "HMRC Debug")
     
     if response.status_code == 200:
         token_data = response.json()
+        frappe.log_error(f"Token data received: {token_data}", "HMRC Debug")
         
         # Save to VAT Settings
         doc = frappe.get_doc("VAT Settings", token_data["docname"])
@@ -222,7 +226,12 @@ def get_tokens():
     if not token_data:
         frappe.throw("Tokens not found or expired")
     
-    return token_data
+     return {
+        "docname": token_data["docname"],
+        "access_token": token_data["access_token"],
+        "refresh_token": token_data["refresh_token"],
+        "expires_in": token_data["expires_in"]
+    }
 
 @frappe.whitelist()
 def refresh_access_token(docname):
