@@ -249,6 +249,101 @@ def fetch_tokens():
 #         "expires_in": token_data["expires_in"]
 #     }
 
+def make_hmrc_request(method, endpoint, docname, params=None, json_data=None, retry_count=0):
+    """
+    Helper function to make authenticated HMRC API requests with automatic token refresh
+    """
+    try:
+        doc = frappe.get_doc("VAT Settings", docname)
+        if not doc.access_token:
+            return {"error": "Access token not found in VAT Settings", "success": False}
+
+        access_token = doc.get_password("access_token")
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/vnd.hmrc.1.0+json",
+            "Content-Type": "application/json",
+            **get_fraud_prevention_headers()  # Include all headers
+        }
+        
+        url = f"{HMRC_API_BASE_URL}{endpoint}"
+        
+        try:
+            response = requests.request(
+                method,
+                url,
+                headers=headers,
+                params=params,
+                json=json_data,
+                timeout=30
+            )
+        except requests.exceptions.RequestException as e:
+            return {"error": f"Request failed: {str(e)}", "success": False}
+
+        log_msg = (
+            f"HMRC API Request:\n"
+            f"Method: {method}\n"
+            f"URL: {url}\n"
+            f"Headers: {headers}\n"
+            f"Params: {params}\n"
+            f"Status Code: {response.status_code}\n"
+            f"Response: {response.text[:500]}"
+        )
+        frappe.log_error(title="HMRC API Debug", message=log_msg)
+
+        # Handle token expiration (401) - attempt refresh once
+        if response.status_code == 401 and retry_count == 0:
+            if "expired" in response.text.lower() or "INVALID_CREDENTIALS" in response.text:
+                frappe.log_error("Access token invalid/expired, attempting refresh...")
+                refresh_result = refresh_access_token(docname)
+                
+                if not refresh_result.get("success"):
+                    return {
+                        "error": f"Token refresh failed: {refresh_result.get('error', 'Unknown error')}",
+                        "success": False
+                    }
+                
+                # Retry with new token
+                return make_hmrc_request(
+                    method, endpoint, docname, 
+                    params, json_data, retry_count + 1
+                )
+
+        # Handle other error responses
+        if response.status_code >= 400:
+            try:
+                error_data = response.json()
+                error_msg = f"HMRC API Error ({response.status_code}): {error_data.get('message', 'No error message')}"
+                if 'code' in error_data:
+                    error_msg += f" (code: {error_data['code']})"
+                return {
+                    "error": error_msg,
+                    "status_code": response.status_code,
+                    "response_text": response.text,
+                    "success": False
+                }
+            except ValueError:
+                return {
+                    "error": f"HMRC API Error ({response.status_code}): {response.text}",
+                    "success": False
+                }
+        try:
+            return {
+                "status_code": response.status_code,
+                "data": response.json() if response.content else None,
+                "success": True
+            }
+        except ValueError:
+            return {
+                "error": f"Invalid JSON response: {response.text}",
+                "success": False
+            }
+
+    except Exception as e:
+        error_msg = f"Unexpected error in make_hmrc_request: {str(e)}"
+        frappe.log_error("HMRC Request Error", error_msg)
+        return {"error": error_msg, "success": False}
+
 @frappe.whitelist()
 def refresh_access_token(docname):
     """Refresh the access token using the refresh token"""
