@@ -219,8 +219,8 @@ def fetch_tokens():
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = f"/app/vat-settings/{token_data['docname']}"
 
-@frappe.whitelist()
-def get_client_credentials(allow_guest=True):
+@frappe.whitelist(allow_guest=True)
+def get_client_credentials():
     """Return client ID and secret for central site"""
     docname = frappe.form_dict.get("docname")
 
