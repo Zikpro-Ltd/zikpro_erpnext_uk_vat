@@ -1,4 +1,5 @@
 frappe.listview_settings['UK MTD VAT Return'] = {
+    default_sort: "creation desc", 
     get_indicator: function (doc) {
         if (doc.status === "Fulfilled") {
             return [__("Fulfilled"), "green", "status,=,Fulfilled"];

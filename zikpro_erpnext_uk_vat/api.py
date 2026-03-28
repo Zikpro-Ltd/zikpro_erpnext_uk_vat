@@ -210,7 +210,7 @@ def fetch_tokens():
     doc.token_expiry = add_to_date(now_datetime(), seconds=int(token_data["expires_in"]))
     doc.status = "Authorized"
     doc.save()
-    frappe.db.commit()
+    # frappe.db.commit() - v16 handles transaction automatically
     
     # Clean up cache
     frappe.cache().delete_value(token_cache_key)
@@ -405,7 +405,7 @@ def refresh_access_token(docname):
             doc.refresh_token = token_data["refresh_token"]
         doc.token_expiry = add_to_date(now_datetime(), seconds=token_data["expires_in"])
         doc.save()
-        frappe.db.commit()
+        # frappe.db.commit() - v16 handles transaction automatically
 
         return {
             "success": True,
@@ -515,7 +515,7 @@ def fetch_all_obligations(frequency, from_date=None, to_date=None):
                 frappe.log_error("Failed to process obligation", f"{str(e)}\nObligation: {obligation}")
                 continue
         
-        frappe.db.commit()
+        # frappe.db.commit() - v16 handles transaction automatically
         return {
             "count": processed_count,
             "frequency": frequency,
@@ -619,7 +619,8 @@ def calculate_vat_boxes(docname):
         "posting_date": ["between", [doc.period_start_date, doc.period_end_date]],
         "docstatus": 1,
         "is_return": 0
-    }, fields=["base_grand_total", "base_total_taxes_and_charges"])
+    }, fields=["base_grand_total", "base_total_taxes_and_charges"],
+    order_by="posting_date asc") # v16
 
     doc.sales_vat_due_box1 = sum(inv.base_total_taxes_and_charges for inv in sales_invoices)
     doc.net_sales_box6 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges for inv in sales_invoices)
@@ -628,7 +629,8 @@ def calculate_vat_boxes(docname):
         "posting_date": ["between", [doc.period_start_date, doc.period_end_date]],
         "docstatus": 1,
         "is_return": 0
-    }, fields=["base_grand_total", "base_total_taxes_and_charges"])
+    }, fields=["base_grand_total", "base_total_taxes_and_charges"],
+    order_by="posting_date asc") #v16
 
     doc.purchase_vat_reclaimed_box4 = sum(inv.base_total_taxes_and_charges for inv in purchase_invoices)
     doc.net_purchases_box7 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges for inv in purchase_invoices)
@@ -653,7 +655,7 @@ def calculate_vat_boxes(docname):
     # doc.formatted_net_vat_due_box5 = format_currency(doc.net_vat_due_box5)
 
     doc.save()
-    frappe.db.commit()
+    # frappe.db.commit() - v16 handles transaction automatically
 
     return {
         "status": "success",
@@ -671,7 +673,8 @@ def calculate_eu_transactions(start_date, end_date):
             # "custom_is_eu_supplier": 1
             "is_eu_supplier": 1
         },
-        fields=["base_grand_total", "base_total_taxes_and_charges"]
+        fields=["base_grand_total", "base_total_taxes_and_charges"],
+        order_by="posting_date asc" #v16
     )
     box2 = sum(inv.base_total_taxes_and_charges for inv in eu_purchases)
     
@@ -683,7 +686,8 @@ def calculate_eu_transactions(start_date, end_date):
             # "custom_is_eu_customer": 1
             "is_eu_customer": 1
         },
-        fields=["base_grand_total", "base_total_taxes_and_charges"]
+        fields=["base_grand_total", "base_total_taxes_and_charges"],
+        order_by="posting_date asc" #v16
     )
     box8 = sum(inv.base_grand_total - inv.base_total_taxes_and_charges 
               for inv in eu_sales)
@@ -816,7 +820,7 @@ def create_proper_version_log(new_doc, old_doc_dict):
         })  # NOTE: Leave "doc" as empty to avoid huge payloads unless needed
         
         version_doc.insert(ignore_permissions=True)
-        frappe.db.commit()
+        # frappe.db.commit() - v16 handles transaction automatically
         frappe.logger().info(f"Version log created: {version_doc.name}")
         return True
 
