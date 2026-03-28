@@ -220,13 +220,13 @@ def fetch_tokens():
     frappe.local.response["location"] = f"/app/vat-settings/{token_data['docname']}"
 
 @frappe.whitelist()
-def get_client_credentials():
+def get_client_credentials(allow_guest=True):
     """Return client ID and secret for central site"""
     docname = frappe.form_dict.get("docname")
 
     if not docname:
         frappe.throw("Missing docname")
-        
+
     doc = frappe.get_doc("VAT Settings", docname)
     return {
         "client_id": doc.client_id,
