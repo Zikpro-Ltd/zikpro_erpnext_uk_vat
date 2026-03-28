@@ -191,8 +191,15 @@ def oauth_callback():
         
         if cred_response.status_code != 200:
             frappe.throw(f"Could not fetch client credentials from {user_site}. Status: {cred_response.status_code}")
+
+        response_data = cred_response.json()
+
+        # ✅ Handle both possible response formats
+        if "message" in response_data:
+            creds = response_data["message"]
+        else:
+            creds = response_data
         
-        creds = cred_response.json()
         client_id = creds.get("client_id")
         client_secret = creds.get("client_secret")
         
