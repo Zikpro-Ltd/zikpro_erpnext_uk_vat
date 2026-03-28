@@ -181,19 +181,26 @@ def oauth_callback():
     
     docname = request_data["docname"]
     user_site = request_data["user_site"]
-    
-    # Get client details from VAT Settings on YOUR site
-    # NOTE: This requires that the VAT Settings document exists on YOUR site
-    # doc = frappe.get_doc("VAT Settings", docname)
-    user_site_response = requests.get(
-        f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.get_client_details",
-        params={"docname": docname}
-    )
-    client_data = user_site_response.json()
-    client_id = doc.client_id
-    client_id = client_data["client_id"]
-    client_secret = client_data["client_secret"]
-    # client_secret = doc.get_password('client_secret')
+
+    try:
+        cred_response = requests.get(
+            f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.get_client_credentials",
+            params={"docname": docname},
+            timeout=10
+        )
+        
+        if cred_response.status_code != 200:
+            frappe.throw(f"Could not fetch client credentials from {user_site}. Status: {cred_response.status_code}")
+        
+        creds = cred_response.json()
+        client_id = creds.get("client_id")
+        client_secret = creds.get("client_secret")
+        
+        if not client_id or not client_secret:
+            frappe.throw("Client credentials missing in response")
+            
+    except requests.exceptions.RequestException as e:
+        frappe.throw(f"Failed to connect to user site: {str(e)}")
     
     # Your fixed redirect URI
     redirect_uri = "https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.oauth_callback"
