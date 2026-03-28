@@ -161,11 +161,20 @@ def get_tokens():
     
     if not token_data:
         frappe.throw("Tokens not found or expired")
+
+    if "docname" not in token_data:
+        frappe.log_error(f"docname missing in cache: {token_data}", "HMRC Debug")
+        frappe.throw("Invalid token data: docname missing")
     
     # Delete after retrieval (one-time use)
     frappe.cache().delete_value(token_cache_key)
     
-    return token_data
+    return {
+        "docname": token_data["docname"],
+        "access_token": token_data["access_token"],
+        "refresh_token": token_data["refresh_token"],
+        "expires_in": token_data["expires_in"]
+    }
 
 @frappe.whitelist(allow_guest=True)
 def oauth_callback():
