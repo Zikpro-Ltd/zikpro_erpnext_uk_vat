@@ -162,18 +162,17 @@ def get_tokens():
     if not token_data:
         frappe.throw("Tokens not found or expired")
 
-    if "docname" not in token_data:
-        frappe.log_error(f"docname missing in cache: {token_data}", "HMRC Debug")
-        frappe.throw("Invalid token data: docname missing")
+    frappe.log_error(f"Cache data for {request_id}: {token_data}", "HMRC Debug")
     
     # Delete after retrieval (one-time use)
     frappe.cache().delete_value(token_cache_key)
     
+    # ✅ Explicitly return each field
     return {
-        "docname": token_data["docname"],
-        "access_token": token_data["access_token"],
-        "refresh_token": token_data["refresh_token"],
-        "expires_in": token_data["expires_in"]
+        "docname": token_data.get("docname"),
+        "access_token": token_data.get("access_token"),
+        "refresh_token": token_data.get("refresh_token"),
+        "expires_in": token_data.get("expires_in")
     }
 
 @frappe.whitelist(allow_guest=True)
@@ -245,6 +244,10 @@ def oauth_callback():
             "refresh_token": token_data["refresh_token"],
             "expires_in": token_data["expires_in"]
         }, expires_in_sec=500)
+
+        verify_data = frappe.cache().get_value(token_cache_key)
+        frappe.log_error(f"Stored in cache: {verify_data}", "HMRC Debug")
+        frappe.log_error(f"Keys in stored data: {list(verify_data.keys()) if verify_data else 'None'}", "HMRC Debug")
         
         frappe.cache().delete_value(cache_key)
 
