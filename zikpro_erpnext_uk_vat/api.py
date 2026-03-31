@@ -213,18 +213,32 @@ def save_tokens():
     access_token = frappe.form_dict.get("access_token")
     refresh_token = frappe.form_dict.get("refresh_token")
     expires_in = frappe.form_dict.get("expires_in")
+
+    frappe.log_error(f"[SAVE] docname: {docname}", "HMRC Flow")
+    frappe.log_error(f"[SAVE] access_token (first 20): {access_token[:20] if access_token else 'None'}...", "HMRC Flow")
+    frappe.log_error(f"[SAVE] refresh_token (first 20): {refresh_token[:20] if refresh_token else 'None'}...", "HMRC Flow")
+    frappe.log_error(f"[SAVE] expires_in: {expires_in}", "HMRC Flow")
     
     if not all([docname, access_token, refresh_token, expires_in]):
         frappe.throw("Missing token data")
     
-    doc = frappe.get_doc("VAT Settings", docname)
-    doc.access_token = access_token
-    doc.refresh_token = refresh_token
-    doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
-    doc.status = "Authorized"
-    doc.save()
-    
-    frappe.log_error(f"[SAVE] Tokens saved successfully", "HMRC Flow")
+    try:
+        doc = frappe.get_doc("VAT Settings", docname)
+        frappe.log_error(f"[SAVE] Found VAT Settings doc", "HMRC Flow")
+        doc.access_token = access_token
+        doc.refresh_token = refresh_token
+        doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
+        doc.status = "Authorized"
+        doc.save()
+
+        frappe.log_error(f"[SAVE] Tokens saved - expiry: {doc.token_expiry}", "HMRC Flow")
+        
+        # ✅ Verify after save
+        frappe.log_error(f"[SAVE] Verified - access_token exists: {'Yes' if doc.access_token else 'No'}", "HMRC Flow")
+
+    except Exception as e:
+        frappe.log_error(f"[SAVE] ERROR: {str(e)}", "HMRC Flow")
+        frappe.throw(f"Failed to save tokens: {str(e)}")
     
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = f"/app/vat-settings/{docname}"
