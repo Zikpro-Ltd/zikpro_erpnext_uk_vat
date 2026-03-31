@@ -143,7 +143,6 @@ def oauth_callback():
     """Step 2: HMRC redirects here - parameters are preserved!"""
     
     frappe.log_error(f"[CALLBACK] ========== CALLBACK RECEIVED ==========", "HMRC Flow")
-    frappe.log_error(f"[CALLBACK] Full form_dict: {frappe.form_dict}", "HMRC Flow")
     
     # These come from the redirect_uri parameters (preserved by HMRC)
     docname = frappe.form_dict.get("docname")
