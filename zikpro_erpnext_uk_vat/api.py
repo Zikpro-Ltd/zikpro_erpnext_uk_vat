@@ -98,133 +98,83 @@ HMRC_API_BASE_URL = "https://test-api.service.hmrc.gov.uk"
 #     except requests.exceptions.RequestException as e:
 #         frappe.throw(f"Request failed: {e}")
 
-# update start oauth flow
-# @frappe.whitelist()
-# def start_oauth_flow(docname):
-#     doc = frappe.get_doc("VAT Settings", docname)
-#     client_id = doc.client_id
-    
-#     # YOUR fixed redirect URI
-#     registered_redirect = "https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.oauth_callback"
-    
-#     # Generate a unique request ID
-#     request_id = frappe.generate_hash(length=20)
-    
-#     # Store temporarily in your site's cache/db
-#     cache_key = f"hmrc_request_{request_id}"
-#     frappe.cache().set_value(cache_key, {
-#         "docname": docname,
-#         "user_site": frappe.local.site,
-#         "expires": 300  # 5 minutes
-#     }, expires_in_sec=300)
-    
-#     state = request_id  # Just use the request ID, not encoded JSON
-
-#     auth_url = (
-#         f"{HMRC_AUTH_URL}?response_type=code&"
-#         f"client_id={client_id}&"
-#         f"redirect_uri={registered_redirect}&"
-#         f"scope=read:vat+write:vat&"  
-#         f"state={state}"
-#     )
-#     return auth_url
-
-# ============= NEW FUNCTIONS FOR CENTRAL SITE =============
-
-@frappe.whitelist(allow_guest=True)
-def store_oauth_request():
-    """Store OAuth request data from user's site"""
-    data = frappe.local.form_dict
-    request_id = data.get("request_id")
-    docname = data.get("docname")
-    user_site = data.get("user_site")
-    
-    if not all([request_id, docname, user_site]):
-        frappe.throw("Missing required data")
-    
-    cache_key = f"hmrc_request_{request_id}"
-    frappe.cache().set_value(cache_key, {
-        "docname": docname,
-        "user_site": user_site
-    }, expires_in_sec=300)
-    
-    return {"success": True}
 
 
-@frappe.whitelist(allow_guest=True)
-def get_tokens():
-    """Return tokens stored in central cache (called by user's site)"""
-    request_id = frappe.form_dict.get("request_id")
-    
-    token_cache_key = f"hmrc_tokens_{request_id}"
-    token_data = frappe.cache().get_value(token_cache_key)
-    
-    if not token_data:
-        frappe.throw("Tokens not found or expired")
+# Your registered redirect URI (without parameters)
+HMRC_REGISTERED_REDIRECT_URI = "https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.oauth_callback"
 
-    frappe.log_error(f"Cache data for {request_id}: {token_data}", "HMRC Debug")
+
+@frappe.whitelist()
+def start_oauth_flow(docname):
+    """Step 1: Start OAuth flow - works on ANY site"""
     
-    # Delete after retrieval (one-time use)
-    frappe.cache().delete_value(token_cache_key)
+    frappe.log_error(f"[START] OAuth started for docname: {docname} on site: {frappe.local.site}", "HMRC Flow")
     
-    # ✅ Explicitly return each field
-    return {
-        "docname": token_data.get("docname"),
-        "access_token": token_data.get("access_token"),
-        "refresh_token": token_data.get("refresh_token"),
-        "expires_in": token_data.get("expires_in")
-    }
+    doc = frappe.get_doc("VAT Settings", docname)
+    client_id = doc.client_id
+    
+    # ✅ IMPORTANT: Append docname and user_site to redirect_uri
+    # HMRC preserves these parameters when redirecting back!
+    redirect_uri = (
+        f"{HMRC_REGISTERED_REDIRECT_URI}"
+        f"?docname={urllib.parse.quote(docname)}"
+        f"&user_site={urllib.parse.quote(frappe.local.site)}"
+    )
+    
+    frappe.log_error(f"[START] Redirect URI with params: {redirect_uri}", "HMRC Flow")
+    
+    # Optional: Use state for CSRF protection
+    state = frappe.generate_hash(length=20)
+    
+    auth_url = (
+        f"{HMRC_AUTH_URL}?response_type=code&"
+        f"client_id={client_id}&"
+        f"redirect_uri={urllib.parse.quote(redirect_uri)}&"
+        f"scope=read:vat+write:vat&"
+        f"state={state}"
+    )
+    
+    return auth_url
+
 
 @frappe.whitelist(allow_guest=True)
 def oauth_callback():
+    """Step 2: HMRC redirects here - parameters are preserved!"""
+    
+    frappe.log_error(f"[CALLBACK] ========== CALLBACK RECEIVED ==========", "HMRC Flow")
+    frappe.log_error(f"[CALLBACK] Full form_dict: {frappe.form_dict}", "HMRC Flow")
+    
+    # These come from the redirect_uri parameters (preserved by HMRC)
+    docname = frappe.form_dict.get("docname")
+    user_site = frappe.form_dict.get("user_site")
+    
+    # These come from HMRC
     code = frappe.form_dict.get("code")
-    request_id = frappe.form_dict.get("state")
+    state = frappe.form_dict.get("state")
     
-    # Get request data from cache
-    cache_key = f"hmrc_request_{request_id}"
-    request_data = frappe.cache().get_value(cache_key)
+    frappe.log_error(f"[CALLBACK] docname: {docname}", "HMRC Flow")
+    frappe.log_error(f"[CALLBACK] user_site: {user_site}", "HMRC Flow")
     
-    if not request_data:
-        frappe.throw("Invalid or expired request")
+    if not all([docname, user_site, code]):
+        frappe.throw("Missing required parameters")
     
-    docname = request_data["docname"]
-    user_site = request_data["user_site"]
-
+    # Get client credentials from THIS site's VAT Settings
     try:
-        cred_response = requests.get(
-            f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.get_client_credentials",
-            params={"docname": docname},
-            timeout=10
-        )
+        doc = frappe.get_doc("VAT Settings", docname)
+        client_id = doc.client_id
+        client_secret = doc.get_password('client_secret')
         
-        if cred_response.status_code != 200:
-            frappe.throw(f"Could not fetch client credentials from {user_site}. Status: {cred_response.status_code}")
-
-        response_data = cred_response.json()
-
-        # ✅ Handle both possible response formats
-        if "message" in response_data:
-            creds = response_data["message"]
-        else:
-            creds = response_data
+        frappe.log_error(f"[CALLBACK] Client ID found: {client_id[:10]}...", "HMRC Flow")
         
-        client_id = creds.get("client_id")
-        client_secret = creds.get("client_secret")
-        
-        if not client_id or not client_secret:
-            frappe.throw("Client credentials missing in response")
-            
-    except requests.exceptions.RequestException as e:
-        frappe.throw(f"Failed to connect to user site: {str(e)}")
+    except Exception as e:
+        frappe.log_error(f"[CALLBACK] VAT Settings not found: {str(e)}", "HMRC Flow")
+        frappe.throw(f"VAT Settings '{docname}' not found on {frappe.local.site}")
     
-    # Your fixed redirect URI
-    redirect_uri = "https://zikprotest.frappe.cloud/api/method/zikpro_erpnext_uk_vat.api.oauth_callback"
-    
-    # Exchange code for tokens
+    # Exchange code for tokens with HMRC
     payload = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": redirect_uri,
+        "redirect_uri": f"{HMRC_REGISTERED_REDIRECT_URI}?docname={docname}&user_site={user_site}",
         "client_id": client_id,
         "client_secret": client_secret
     }
@@ -233,96 +183,54 @@ def oauth_callback():
     
     response = requests.post(HMRC_TOKEN_URL, data=payload, headers=headers, auth=auth)
     
-    if response.status_code == 200:
-        token_data = response.json()
-        
-        # Store tokens temporarily
-        token_cache_key = f"hmrc_tokens_{request_id}"
-        frappe.cache().set_value(token_cache_key, {
-            "docname": docname,
-            "access_token": token_data["access_token"],
-            "refresh_token": token_data["refresh_token"],
-            "expires_in": token_data["expires_in"]
-        }, expires_in_sec=500)
+    frappe.log_error(f"[CALLBACK] Token exchange status: {response.status_code}", "HMRC Flow")
+    
+    if response.status_code != 200:
+        frappe.throw(f"Token exchange failed: {response.status_code} - {response.text}")
+    
+    token_data = response.json()
+    
+    # Redirect back to the ORIGINAL site with tokens
+    redirect_url = (
+        f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.save_tokens?"
+        f"docname={docname}&"
+        f"access_token={token_data['access_token']}&"
+        f"refresh_token={token_data['refresh_token']}&"
+        f"expires_in={token_data['expires_in']}"
+    )
+    
+    frappe.log_error(f"[CALLBACK] Redirecting to: {redirect_url}", "HMRC Flow")
+    
+    frappe.local.response["type"] = "redirect"
+    frappe.local.response["location"] = redirect_url
 
-        verify_data = frappe.cache().get_value(token_cache_key)
-        frappe.log_error(f"Stored in cache: {verify_data}", "HMRC Debug")
-        frappe.log_error(f"Keys in stored data: {list(verify_data.keys()) if verify_data else 'None'}", "HMRC Debug")
-        
-        frappe.cache().delete_value(cache_key)
 
-        # Redirect user back to THEIR site
-        frappe.local.response["type"] = "redirect"
-        frappe.local.response["location"] = f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.fetch_tokens?request_id={request_id}"
-    else:
-        frappe.throw(f"Error: {response.status_code}, {response.text}")
+@frappe.whitelist(allow_guest=True)
+def save_tokens():
+    """Step 3: Save tokens on the original site"""
+    
+    frappe.log_error(f"[SAVE] ========== SAVE TOKENS CALLED ==========", "HMRC Flow")
+    
+    docname = frappe.form_dict.get("docname")
+    access_token = frappe.form_dict.get("access_token")
+    refresh_token = frappe.form_dict.get("refresh_token")
+    expires_in = frappe.form_dict.get("expires_in")
+    
+    if not all([docname, access_token, refresh_token, expires_in]):
+        frappe.throw("Missing token data")
+    
+    doc = frappe.get_doc("VAT Settings", docname)
+    doc.access_token = access_token
+    doc.refresh_token = refresh_token
+    doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
+    doc.status = "Authorized"
+    doc.save()
+    
+    frappe.log_error(f"[SAVE] Tokens saved successfully", "HMRC Flow")
+    
+    frappe.local.response["type"] = "redirect"
+    frappe.local.response["location"] = f"/app/vat-settings/{docname}"
 
-# @frappe.whitelist()
-# def fetch_tokens():
-#     request_id = frappe.form_dict.get("request_id")
-    
-#     if not request_id:
-#         frappe.throw("Missing request ID")
-
-#     frappe.log_error(f"Fetch request_id: {request_id}", "HMRC Fetch Start")
-
-#     # DIRECTLY get from cache - no API call needed!
-#     token_cache_key = f"hmrc_tokens_{request_id}"
-#     token_data = frappe.cache().get_value(token_cache_key)
-    
-#     if token_data:
-#         frappe.log_error(f"Keys: {list(token_data.keys())}", "HMRC Cache Keys")  # ✅ 30 chars
-#     else:
-#         frappe.log_error(f"No cache for {request_id}", "HMRC")  # ✅ 25 chars
-    
-#     if not token_data:
-#         frappe.throw("Tokens not found or expired. ")
-    
-#     # Save to VAT Settings
-#     doc = frappe.get_doc("VAT Settings", token_data["docname"])
-#     doc.access_token = token_data["access_token"]
-#     doc.refresh_token = token_data["refresh_token"]
-#     doc.token_expiry = add_to_date(now_datetime(), seconds=int(token_data["expires_in"]))
-#     doc.status = "Authorized"
-#     doc.save()
-#     # frappe.db.commit() - v16 handles transaction automatically
-    
-#     # Clean up cache
-#     frappe.cache().delete_value(token_cache_key)
-    
-#     # Redirect to VAT Settings page
-#     frappe.local.response["type"] = "redirect"
-#     frappe.local.response["location"] = f"/app/vat-settings/{token_data['docname']}"
-
-# @frappe.whitelist(allow_guest=True)
-# def get_tokens():
-#     request_id = frappe.form_dict.get("request_id")
-    
-#     # Get tokens from cache
-#     token_cache_key = f"hmrc_tokens_{request_id}"
-#     token_data = frappe.cache().get_value(token_cache_key)
-    
-#     # PEHLA DEBUG - Cache mein kya hai?
-#     frappe.log_error(f"Raw cache data for {request_id}: {token_data}", "HMRC Cache Check")
-    
-#     if not token_data:
-#         frappe.log_error(f"No token data in cache for {request_id}", "HMRC Cache Miss")
-#         frappe.throw("Tokens not found or expired")
-    
-#     # DOOSRA DEBUG - token_data ki keys kya hain?
-#     frappe.log_error(f"Token data keys: {list(token_data.keys()) if token_data else 'None'}", "HMRC Keys")
-    
-#     # Check if docname exists
-#     if "docname" not in token_data:
-#         frappe.log_error(f"docname missing! Full token_data: {token_data}", "HMRC Critical Error")
-#         frappe.throw(f"Invalid token data: docname missing. Keys: {list(token_data.keys())}")
-    
-#     return {
-#         "docname": token_data["docname"],
-#         "access_token": token_data["access_token"],
-#         "refresh_token": token_data["refresh_token"],
-#         "expires_in": token_data["expires_in"]
-#     }
 
 def make_hmrc_request(method, endpoint, docname, params=None, json_data=None, retry_count=0):
     """
