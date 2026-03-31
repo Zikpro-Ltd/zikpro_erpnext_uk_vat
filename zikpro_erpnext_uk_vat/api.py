@@ -198,7 +198,6 @@ def oauth_callback():
         f"expires_in={token_data['expires_in']}"
     )
     
-    frappe.log_error(f"[CALLBACK] Redirecting to: {redirect_url}", "HMRC Flow")
     
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = redirect_url
