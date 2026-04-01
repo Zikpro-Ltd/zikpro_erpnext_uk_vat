@@ -227,8 +227,8 @@ def save_tokens():
         frappe.log_error(f"[SAVE] Found VAT Settings doc", "HMRC Flow")
         doc.access_token = access_token
         doc.refresh_token = refresh_token
-        doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
-        doc.status = "Authorized"
+        # doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
+        # doc.status = "Authorized"
         doc.save()
 
         frappe.log_error(f"[SAVE] Tokens saved - expiry: {doc.token_expiry}", "HMRC Flow")
@@ -257,8 +257,8 @@ def check_stored_tokens(docname):
             "access_token_stored": bool(access),
             "access_token_preview": access[:20] if access else None,
             "refresh_token_stored": bool(refresh),
-            "status": doc.status,
-            "token_expiry": str(doc.token_expiry) if doc.token_expiry else None
+            # "status": doc.status,
+            # "token_expiry": str(doc.token_expiry) if doc.token_expiry else None
         }
     except Exception as e:
         return {"error": str(e)}
