@@ -231,7 +231,7 @@ def save_tokens():
         # doc.status = "Authorized"
         doc.save()
 
-        frappe.log_error(f"[SAVE] Tokens saved - expiry: {doc.token_expiry}", "HMRC Flow")
+        # frappe.log_error(f"[SAVE] Tokens saved - expiry: {doc.token_expiry}", "HMRC Flow")
         
         # ✅ Verify after save
         frappe.log_error(f"[SAVE] Verified - access_token exists: {'Yes' if doc.access_token else 'No'}", "HMRC Flow")
