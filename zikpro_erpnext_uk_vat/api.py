@@ -223,13 +223,19 @@ def save_tokens():
         frappe.throw("Missing token data")
     
     try:
-        doc = frappe.get_doc("VAT Settings", docname)
-        frappe.log_error(f"[SAVE] Found VAT Settings doc", "HMRC Flow")
-        doc.access_token = access_token
-        doc.refresh_token = refresh_token
-        # doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
-        # doc.status = "Authorized"
-        doc.save()
+        # doc = frappe.get_doc("VAT Settings", docname)
+        # frappe.log_error(f"[SAVE] Found VAT Settings doc", "HMRC Flow")
+        # doc.access_token = access_token
+        # doc.refresh_token = refresh_token
+        # # doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
+        # # doc.status = "Authorized"
+        # doc.save()
+
+        # Save using db_set - no commit needed in v16
+        frappe.db.set_value("VAT Settings", docname, "access_token", access_token)
+        frappe.db.set_value("VAT Settings", docname, "refresh_token", refresh_token)
+
+        frappe.log_error(f"[SAVE] Tokens saved for {docname}", "HMRC Flow")
 
         # frappe.log_error(f"[SAVE] Tokens saved - expiry: {doc.token_expiry}", "HMRC Flow")
         
