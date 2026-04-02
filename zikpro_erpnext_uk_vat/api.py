@@ -368,7 +368,7 @@ def refresh_access_token(docname):
             doc.refresh_token = token_data["refresh_token"]
         doc.token_expiry = add_to_date(now_datetime(), seconds=token_data["expires_in"])
         doc.save()
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
 
         return {
             "success": True,
@@ -478,7 +478,7 @@ def fetch_all_obligations(frequency, from_date=None, to_date=None):
                 frappe.log_error("Failed to process obligation", f"{str(e)}\nObligation: {obligation}")
                 continue
         
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
         return {
             "count": processed_count,
             "frequency": frequency,
@@ -618,7 +618,7 @@ def calculate_vat_boxes(docname):
     # doc.formatted_net_vat_due_box5 = format_currency(doc.net_vat_due_box5)
 
     doc.save()
-    # frappe.db.commit() - v16 handles transaction automatically
+    frappe.db.commit()
 
     return {
         "status": "success",
@@ -783,7 +783,7 @@ def create_proper_version_log(new_doc, old_doc_dict):
         })  # NOTE: Leave "doc" as empty to avoid huge payloads unless needed
         
         version_doc.insert(ignore_permissions=True)
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
         frappe.logger().info(f"Version log created: {version_doc.name}")
         return True
 
