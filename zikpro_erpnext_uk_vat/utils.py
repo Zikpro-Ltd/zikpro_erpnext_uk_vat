@@ -64,7 +64,7 @@ def log_mfa_error(user, title, error_message):
             "reference_doctype": "User MFA Timestamp",
             "reference_name": user or "Unknown"
         }).insert(ignore_permissions=True)
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
     except Exception as e:
         frappe.logger().error(f"Failed to log MFA error: {e} | Original Error: {error_message}")
 
@@ -90,7 +90,7 @@ def update_mfa_timestamp(user):
                 VALUES (%s, %s, %s, %s, %s)
             """, (frappe.generate_hash(10), user, timestamp, timestamp, timestamp))
 
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
         frappe.clear_cache(doctype="User MFA Timestamp")
         frappe.clear_cache(user=user)
 
@@ -218,7 +218,7 @@ def create_initial_records():
             if not exists:  # Only create if record does not exist
                 update_mfa_timestamp(user)
 
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
 
     except Exception:
         error_msg = f"Error creating initial MFA records:\n{frappe.get_traceback()}"
@@ -229,7 +229,7 @@ def create_initial_records():
 def clear_user_cache(data):
     frappe.clear_cache(doctype="User MFA Timestamp")
     frappe.clear_cache(user=data["user"])
-    # frappe.db.commit() - v16 handles transaction automatically
+    frappe.db.commit()
 
 
 

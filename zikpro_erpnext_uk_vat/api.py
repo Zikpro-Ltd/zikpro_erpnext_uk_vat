@@ -107,24 +107,16 @@ HMRC_REGISTERED_REDIRECT_URI = "https://zikprotest.frappe.cloud/api/method/zikpr
 
 @frappe.whitelist()
 def start_oauth_flow(docname):
-    """Step 1: Start OAuth flow - works on ANY site"""
-    
-    frappe.log_error(f"[START] OAuth started for docname: {docname} on site: {frappe.local.site}", "HMRC Flow")
     
     doc = frappe.get_doc("VAT Settings", docname)
     client_id = doc.client_id
-    
-    # ✅ IMPORTANT: Append docname and user_site to redirect_uri
-    # HMRC preserves these parameters when redirecting back!
+
     redirect_uri = (
         f"{HMRC_REGISTERED_REDIRECT_URI}"
         f"?docname={urllib.parse.quote(docname)}"
         f"&user_site={urllib.parse.quote(frappe.local.site)}"
     )
     
-    frappe.log_error(f"[START] Redirect URI with params: {redirect_uri}", "HMRC Flow")
-    
-    # Optional: Use state for CSRF protection
     state = frappe.generate_hash(length=20)
     
     auth_url = (
@@ -140,37 +132,25 @@ def start_oauth_flow(docname):
 
 @frappe.whitelist(allow_guest=True)
 def oauth_callback():
-    """Step 2: HMRC redirects here - parameters are preserved!"""
-    
-    frappe.log_error(f"[CALLBACK] ========== CALLBACK RECEIVED ==========", "HMRC Flow")
-    
-    # These come from the redirect_uri parameters (preserved by HMRC)
+
     docname = frappe.form_dict.get("docname")
     user_site = frappe.form_dict.get("user_site")
     
-    # These come from HMRC
     code = frappe.form_dict.get("code")
     state = frappe.form_dict.get("state")
-    
-    frappe.log_error(f"[CALLBACK] docname: {docname}", "HMRC Flow")
-    frappe.log_error(f"[CALLBACK] user_site: {user_site}", "HMRC Flow")
     
     if not all([docname, user_site, code]):
         frappe.throw("Missing required parameters")
     
-    # Get client credentials from THIS site's VAT Settings
     try:
         doc = frappe.get_doc("VAT Settings", docname)
         client_id = doc.client_id
         client_secret = doc.get_password('client_secret')
         
-        frappe.log_error(f"[CALLBACK] Client ID found: {client_id[:10]}...", "HMRC Flow")
-        
     except Exception as e:
         frappe.log_error(f"[CALLBACK] VAT Settings not found: {str(e)}", "HMRC Flow")
         frappe.throw(f"VAT Settings '{docname}' not found on {frappe.local.site}")
     
-    # Exchange code for tokens with HMRC
     payload = {
         "grant_type": "authorization_code",
         "code": code,
@@ -183,14 +163,11 @@ def oauth_callback():
     
     response = requests.post(HMRC_TOKEN_URL, data=payload, headers=headers, auth=auth)
     
-    frappe.log_error(f"[CALLBACK] Token exchange status: {response.status_code}", "HMRC Flow")
-    
     if response.status_code != 200:
         frappe.throw(f"Token exchange failed: {response.status_code} - {response.text}")
     
     token_data = response.json()
     
-    # Redirect back to the ORIGINAL site with tokens
     redirect_url = (
         f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.save_tokens?"
         f"docname={docname}&"
@@ -203,11 +180,8 @@ def oauth_callback():
     frappe.local.response["location"] = redirect_url
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def save_tokens():
-    """Step 3: Save tokens on the original site"""
-    
-    frappe.log_error(f"[SAVE] ========== SAVE TOKENS CALLED ==========", "HMRC Flow")
     
     docname = frappe.form_dict.get("docname")
     access_token = frappe.form_dict.get("access_token")
@@ -223,8 +197,7 @@ def save_tokens():
     doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
     doc.status = "Authorized"
     doc.save()
-    
-    frappe.log_error(f"[SAVE] Tokens saved successfully", "HMRC Flow")
+    frappe.db.commit()
     
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = f"/app/vat-settings/{docname}"
@@ -386,7 +359,7 @@ def refresh_access_token(docname):
             doc.refresh_token = token_data["refresh_token"]
         doc.token_expiry = add_to_date(now_datetime(), seconds=token_data["expires_in"])
         doc.save()
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
 
         return {
             "success": True,
@@ -496,7 +469,7 @@ def fetch_all_obligations(frequency, from_date=None, to_date=None):
                 frappe.log_error("Failed to process obligation", f"{str(e)}\nObligation: {obligation}")
                 continue
         
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
         return {
             "count": processed_count,
             "frequency": frequency,
@@ -636,7 +609,7 @@ def calculate_vat_boxes(docname):
     # doc.formatted_net_vat_due_box5 = format_currency(doc.net_vat_due_box5)
 
     doc.save()
-    # frappe.db.commit() - v16 handles transaction automatically
+    frappe.db.commit()
 
     return {
         "status": "success",
@@ -801,7 +774,7 @@ def create_proper_version_log(new_doc, old_doc_dict):
         })  # NOTE: Leave "doc" as empty to avoid huge payloads unless needed
         
         version_doc.insert(ignore_permissions=True)
-        # frappe.db.commit() - v16 handles transaction automatically
+        frappe.db.commit()
         frappe.logger().info(f"Version log created: {version_doc.name}")
         return True
 
@@ -930,7 +903,7 @@ def fetch_payments(from_date=None, to_date=None):
             status_code = response.get("status_code", "unknown")
 
         if status_code == 404:
-            frappe.throw("No liability data found for the specified period.")
+            frappe.throw("No Payment data found for the specified period.")
         else:
             frappe.throw(f"HMRC API Error ({status_code}): {error_msg}")
             
