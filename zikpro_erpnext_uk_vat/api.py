@@ -243,7 +243,6 @@ def save_tokens():
         verify_access = verify_doc.get_password('access_token') if verify_doc.access_token else None
         
         frappe.log_error(f"[SAVE] VERIFICATION - access_token exists: {'Yes' if verify_access else 'No'}", "HMRC Flow")
-        frappe.log_error(f"[SAVE] VERIFICATION - token_expiry: {verify_doc.token_expiry}", "HMRC Flow")
 
         # frappe.log_error(f"[SAVE] Tokens saved - expiry: {doc.token_expiry}", "HMRC Flow")
         
