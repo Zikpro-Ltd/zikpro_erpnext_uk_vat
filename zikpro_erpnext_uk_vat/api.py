@@ -19,6 +19,7 @@ from frappe.utils import get_site_name,get_host_name
 import time
 import ipaddress
 import urllib.parse
+from frappe.utils.password import set_encrypted_password
 # from frappe.utils import hash
 
 
@@ -231,12 +232,9 @@ def save_tokens():
         # # doc.status = "Authorized"
         # doc.save()
 
-        doc = frappe.get_doc("VAT Settings", docname)
-
-        # Correct handling for password fields
-        doc.set_password("access_token", access_token)
-        doc.set_password("refresh_token", refresh_token)
-
+        set_encrypted_password("VAT Settings", docname, access_token, "access_token")
+        set_encrypted_password("VAT Settings", docname, refresh_token, "refresh_token")
+        
         # Save using db_set - no commit needed in v16
         # frappe.db.set_value("VAT Settings", docname, "access_token", access_token)
         # frappe.db.set_value("VAT Settings", docname, "refresh_token", refresh_token)
