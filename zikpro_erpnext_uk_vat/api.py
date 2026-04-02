@@ -912,7 +912,7 @@ def fetch_payments(from_date=None, to_date=None):
             status_code = response.get("status_code", "unknown")
 
         if status_code == 404:
-            frappe.throw("No liability data found for the specified period.")
+            frappe.throw("No Payment data found for the specified period.")
         else:
             frappe.throw(f"HMRC API Error ({status_code}): {error_msg}")
             
