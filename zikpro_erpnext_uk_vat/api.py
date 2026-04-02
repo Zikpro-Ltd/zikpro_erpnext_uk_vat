@@ -231,9 +231,15 @@ def save_tokens():
         # # doc.status = "Authorized"
         # doc.save()
 
+        doc = frappe.get_doc("VAT Settings", docname)
+
+        # Correct handling for password fields
+        doc.set_password("access_token", access_token)
+        doc.set_password("refresh_token", refresh_token)
+
         # Save using db_set - no commit needed in v16
-        frappe.db.set_value("VAT Settings", docname, "access_token", access_token)
-        frappe.db.set_value("VAT Settings", docname, "refresh_token", refresh_token)
+        # frappe.db.set_value("VAT Settings", docname, "access_token", access_token)
+        # frappe.db.set_value("VAT Settings", docname, "refresh_token", refresh_token)
 
         frappe.log_error(f"[SAVE] Tokens saved for {docname}", "HMRC Flow")
 
@@ -249,25 +255,25 @@ def save_tokens():
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = f"/app/vat-settings/{docname}"
 
-@frappe.whitelist()
-def check_stored_tokens(docname):
-    """Check if tokens are actually stored"""
-    try:
-        doc = frappe.get_doc("VAT Settings", docname)
-        
-        # Password fields need get_password() to retrieve decrypted value
-        access = doc.get_password('access_token') if doc.access_token else None
-        refresh = doc.get_password('refresh_token') if doc.refresh_token else None
-        
-        return {
-            "access_token_stored": bool(access),
-            "access_token_preview": access[:20] if access else None,
-            "refresh_token_stored": bool(refresh),
-            # "status": doc.status,
-            # "token_expiry": str(doc.token_expiry) if doc.token_expiry else None
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    @frappe.whitelist()
+    def check_stored_tokens(docname):
+        """Check if tokens are actually stored"""
+        try:
+            doc = frappe.get_doc("VAT Settings", docname)
+            
+            # Password fields need get_password() to retrieve decrypted value
+            access = doc.get_password('access_token') if doc.access_token else None
+            refresh = doc.get_password('refresh_token') if doc.refresh_token else None
+            
+            return {
+                "access_token_stored": bool(access),
+                "access_token_preview": access[:20] if access else None,
+                "refresh_token_stored": bool(refresh),
+                # "status": doc.status,
+                # "token_expiry": str(doc.token_expiry) if doc.token_expiry else None
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
 
 def make_hmrc_request(method, endpoint, docname, params=None, json_data=None, retry_count=0):
