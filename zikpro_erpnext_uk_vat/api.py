@@ -204,7 +204,7 @@ def oauth_callback():
     frappe.local.response["location"] = redirect_url
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def save_tokens():
     """Step 3: Save tokens on the original site"""
     
@@ -224,22 +224,26 @@ def save_tokens():
         frappe.throw("Missing token data")
     
     try:
-        # doc = frappe.get_doc("VAT Settings", docname)
-        # frappe.log_error(f"[SAVE] Found VAT Settings doc", "HMRC Flow")
-        # doc.access_token = access_token
-        # doc.refresh_token = refresh_token
-        # # doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
-        # # doc.status = "Authorized"
-        # doc.save()
+        doc = frappe.get_doc("VAT Settings", docname)
+        frappe.log_error(f"[SAVE] Found VAT Settings doc", "HMRC Flow")
+        doc.access_token = access_token
+        doc.refresh_token = refresh_token
+        # doc.token_expiry = add_to_date(now_datetime(), seconds=int(expires_in))
+        # doc.status = "Authorized"
+        doc.save()
+        frappe.db.commit()
 
-        set_encrypted_password("VAT Settings", docname, access_token, "access_token")
-        set_encrypted_password("VAT Settings", docname, refresh_token, "refresh_token")
-        
         # Save using db_set - no commit needed in v16
         # frappe.db.set_value("VAT Settings", docname, "access_token", access_token)
         # frappe.db.set_value("VAT Settings", docname, "refresh_token", refresh_token)
 
         frappe.log_error(f"[SAVE] Tokens saved for {docname}", "HMRC Flow")
+
+        verify_doc = frappe.get_doc("VAT Settings", docname)
+        verify_access = verify_doc.get_password('access_token') if verify_doc.access_token else None
+        
+        frappe.log_error(f"[SAVE] VERIFICATION - access_token exists: {'Yes' if verify_access else 'No'}", "HMRC Flow")
+        frappe.log_error(f"[SAVE] VERIFICATION - token_expiry: {verify_doc.token_expiry}", "HMRC Flow")
 
         # frappe.log_error(f"[SAVE] Tokens saved - expiry: {doc.token_expiry}", "HMRC Flow")
         
