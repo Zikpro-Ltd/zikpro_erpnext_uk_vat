@@ -113,7 +113,8 @@ def start_oauth_flow(docname):
 
     redirect_uri = (
         f"{HMRC_REGISTERED_REDIRECT_URI}"
-        f"?docname={urllib.parse.quote(docname)}"
+        # f"?docname={urllib.parse.quote(docname)}"
+        f"?client_id={urllib.parse.quote(client_id)}"
         f"&user_site={urllib.parse.quote(frappe.local.site)}"
     )
     
@@ -132,7 +133,8 @@ def start_oauth_flow(docname):
 
 @frappe.whitelist(allow_guest=True)
 def oauth_callback():
-    docname = frappe.form_dict.get("docname")
+    # docname = frappe.form_dict.get("docname")
+    client_id = frappe.form_dict.get("client_id")
     user_site = frappe.form_dict.get("user_site")
     
     # These come from HMRC
@@ -140,23 +142,36 @@ def oauth_callback():
     state = frappe.form_dict.get("state")
     
     
-    if not all([docname, user_site, code]):
+    # if not all([docname, user_site, code]):
+    #     frappe.throw("Missing required parameters")
+
+    if not all([client_id, user_site, code]):
         frappe.throw("Missing required parameters")
     
     try:
+        docname = frappe.db.get_value(
+            "VAT Settings",
+            {"client_id": client_id},
+            "name"
+        )
+
+        if not docname:
+            frappe.throw(f"VAT Settings not found for client_id: {client_id}")
+        
         doc = frappe.get_doc("VAT Settings", docname)
-        client_id = doc.client_id
+        # client_id = doc.client_id
         client_secret = doc.get_password('client_secret')
         
         
     except Exception as e:
         frappe.log_error(f"[CALLBACK] VAT Settings not found: {str(e)}", "HMRC Flow")
-        frappe.throw(f"VAT Settings '{docname}' not found on {frappe.local.site}")
+        frappe.throw(f"VAT Settings not found")
     
     payload = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": f"{HMRC_REGISTERED_REDIRECT_URI}?docname={docname}&user_site={user_site}",
+        # "redirect_uri": f"{HMRC_REGISTERED_REDIRECT_URI}?docname={docname}&user_site={user_site}",
+        "redirect_uri": f"{HMRC_REGISTERED_REDIRECT_URI}?client_id={client_id}&user_site={user_site}",
         "client_id": client_id,
         "client_secret": client_secret
     }
@@ -172,7 +187,8 @@ def oauth_callback():
 
     redirect_url = (
         f"https://{user_site}/api/method/zikpro_erpnext_uk_vat.api.save_tokens?"
-        f"docname={docname}&"
+        # f"docname={docname}&"
+        f"client_id={client_id}&"
         f"access_token={token_data['access_token']}&"
         f"refresh_token={token_data['refresh_token']}&"
         f"expires_in={token_data['expires_in']}"
@@ -186,15 +202,28 @@ def oauth_callback():
 @frappe.whitelist()
 def save_tokens():
 
-    docname = frappe.form_dict.get("docname")
+    # docname = frappe.form_dict.get("docname")
+    client_id = frappe.form_dict.get("client_id")
     access_token = frappe.form_dict.get("access_token")
     refresh_token = frappe.form_dict.get("refresh_token")
     expires_in = frappe.form_dict.get("expires_in")
     
-    if not all([docname, access_token, refresh_token, expires_in]):
+    # if not all([docname, access_token, refresh_token, expires_in]):
+    #     frappe.throw("Missing token data")
+
+    if not all([client_id, access_token, refresh_token, expires_in]):
         frappe.throw("Missing token data")
     
     try:
+        docname = frappe.db.get_value(
+            "VAT Settings",
+            {"client_id": client_id},
+            "name"
+        )
+
+        if not docname:
+            frappe.throw(f"VAT Settings not found for client_id: {client_id}")
+            
         doc = frappe.get_doc("VAT Settings", docname)
 
         doc.access_token = access_token
