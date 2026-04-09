@@ -67,67 +67,68 @@ frappe.listview_settings['UK MTD VAT Return'] = {
 };
 
 //actual code starts
-// frappe.ui.form.on('UK MTD VAT Return', {
-//     refresh: function(frm) {
-//         if (frm.doc.docstatus === 0) {
-//             frm.add_custom_button(__('Calculate VAT Boxes'), function() {
-//                 frappe.call({
-//                     method: 'zikpro_erpnext_uk_vat.api.calculate_vat_boxes',
-//                     args: { docname: frm.doc.name },
-//                     callback: function(r) {
-//                         if (!r.exc) {
-//                             frappe.show_alert({
-//                                 message: __('VAT boxes calculated successfully'),
-//                                 indicator: 'green'
-//                             });
-//                             frm.refresh();
-//                         }
-//                     },
-//                     freeze: true,
-//                     freeze_message: __('Calculating VAT boxes...')
-//                 });
-//             }, __('VAT Return'));
+frappe.ui.form.on('UK MTD VAT Return', {
+    refresh: function(frm) {
+        if (frm.doc.docstatus === 0) {
+            frm.add_custom_button(__('Calculate VAT Boxes'), function() {
+                frappe.call({
+                    method: 'zikpro_erpnext_uk_vat.api.calculate_vat_boxes',
+                    args: { docname: frm.doc.name },
+                    callback: function(r) {
+                        if (!r.exc) {
+                            frappe.show_alert({
+                                message: __('VAT boxes calculated successfully'),
+                                indicator: 'green'
+                            });
+                            frm.refresh();
+                        }
+                    },
+                    freeze: true,
+                    freeze_message: __('Calculating VAT boxes...')
+                });
+            }, __('VAT Return'));
 
-//             if (frm.doc.status === "Overdue") {
-//                 frm.add_custom_button(__('Submit to HMRC'), function() {
-//                     frappe.confirm(
-//                         __('<strong>UK HMRC Legal Declaration</strong><br><br>When you submit this VAT information you are making a legal declaration that the information is true and complete. A false declaration can result in prosecution.<br><br> Would you like to proceed?'),
-//                         function() {  
-//                             frappe.call({
-//                                 method: 'zikpro_erpnext_uk_vat.api.submit_vat_return_to_hmrc',
-//                                 args: { docname: frm.doc.name },
-//                                 callback: function(r) {
-//                                     if (!r.exc) {
-//                                         frappe.show_alert({
-//                                             message: __('VAT return submitted successfully! Redirecting...'),
-//                                             indicator: 'green'
-//                                         });
+            if (frm.doc.status === "Overdue") {
+                frm.add_custom_button(__('Submit to HMRC'), function() {
+                    frappe.confirm(
+                        __('<strong>UK HMRC Legal Declaration</strong><br><br>When you submit this VAT information you are making a legal declaration that the information is true and complete. A false declaration can result in prosecution.<br><br> Would you like to proceed?'),
+                        function() {  
+                            frappe.call({
+                                method: 'zikpro_erpnext_uk_vat.api.submit_vat_return_to_hmrc',
+                                args: { docname: frm.doc.name },
+                                callback: function(r) {
+                                    if (!r.exc) {
+                                        frappe.show_alert({
+                                            message: __('VAT return submitted successfully! Redirecting...'),
+                                            indicator: 'green'
+                                        });
                                         
-//                                         setTimeout(() => {
-//                                             frappe.set_route("List", "UK MTD VAT Return");
-//                                         }, 2000);
-//                                     }
-//                                 },
-//                                 freeze: true,
-//                                 freeze_message: __('Submitting to HMRC...')
-//                             });
-//                         },
-//                         function() { 
-//                             frappe.show_alert({
-//                                 message: __('Submission cancelled'),
-//                                 indicator: 'orange'
-//                             });
-//                         }
-//                     );
-//                 }, __('VAT Return')).addClass('btn-danger');
-//             }
-//         }
-//         setup_box_calculations(frm); 
-//     }
-// });
+                                        setTimeout(() => {
+                                            frappe.set_route("List", "UK MTD VAT Return");
+                                        }, 2000);
+                                    }
+                                },
+                                freeze: true,
+                                freeze_message: __('Submitting to HMRC...')
+                            });
+                        },
+                        function() { 
+                            frappe.show_alert({
+                                message: __('Submission cancelled'),
+                                indicator: 'orange'
+                            });
+                        }
+                    );
+                }, __('VAT Return')).addClass('btn-danger');
+            }
+        }
+        setup_box_calculations(frm); 
+    }
+});
 
 //actual code ends
 
+/*
 frappe.ui.form.on('UK MTD VAT Return', {
     refresh: function(frm) {
         if (frm.doc.docstatus === 0) {
@@ -171,11 +172,11 @@ frappe.ui.form.on('UK MTD VAT Return', {
                                         <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                                             <p style="margin-bottom: 8px;">
                                                 <i class="fa fa-phone" style="margin-right: 10px; color: #5e64ff;"></i>
-                                                <strong>${__('Phone:')}</strong> <span style="color: #333;">+44 (0) 123 456 7890</span>
+                                                <strong>${__('Phone:')}</strong> <span style="color: #333;">+44 7923 434858</span>
                                             </p>
                                             <p style="margin-bottom: 8px;">
                                                 <i class="fa fa-envelope" style="margin-right: 10px; color: #5e64ff;"></i>
-                                                <strong>${__('Email:')}</strong> <span style="color: #333;">vat.submissions@zikpro.com</span>
+                                                <strong>${__('Email:')}</strong> <span style="color: #333;">info@zikpro.com</span>
                                             </p>
                                             <p style="margin-bottom: 0;">
                                                 <i class="fa fa-clock-o" style="margin-right: 10px; color: #5e64ff;"></i>
@@ -208,7 +209,7 @@ frappe.ui.form.on('UK MTD VAT Return', {
         }
         setup_box_calculations(frm); // Your existing calculation setup
     }
-});
+}); */
 
 
 function setup_box_calculations(frm) {
