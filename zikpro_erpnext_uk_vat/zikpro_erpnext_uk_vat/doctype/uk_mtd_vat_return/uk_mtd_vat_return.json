@@ -129,6 +129,7 @@
   {
     "fieldname": "obligation_frequency",
     "fieldtype": "Select",
+    "hidden": 1,
     "label": "Obligation Frequency",
     "options": "Monthly\nQuarterly\nAll",
     "default": "All",
@@ -137,6 +138,7 @@
   {
     "fieldname": "fetch_obligations_btn",
     "fieldtype": "Button",
+    "hidden": 1,
     "label": "Fetch Obligations",
     "depends_on": "eval:doc.docstatus==0",
     "insert_after": "obligation_frequency"

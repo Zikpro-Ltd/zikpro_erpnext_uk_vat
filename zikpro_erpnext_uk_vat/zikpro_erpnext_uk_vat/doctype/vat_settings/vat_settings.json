@@ -49,6 +49,7 @@
    "description": "You will billed per submission",
    "fieldname": "payment_method",
    "fieldtype": "Select",
+   "hidden": 1,
    "in_list_view": 1,
    "label": "Payment Method",
    "options": "Cash\nBank",
