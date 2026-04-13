@@ -49,10 +49,10 @@
    "description": "You will billed per submission",
    "fieldname": "payment_method",
    "fieldtype": "Select",
+   "hidden": 1,
    "in_list_view": 1,
    "label": "Payment Method",
-   "options": "Cash\nBank",
-   "reqd": 1
+   "options": "Cash\nBank"
   },
   {
    "fieldname": "vat_return_report",
@@ -96,7 +96,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-25 17:32:46.638101",
+ "modified": "2026-04-10 01:46:10.200056",
  "modified_by": "Administrator",
  "module": "Zikpro Erpnext Uk Vat",
  "name": "VAT Settings",
@@ -115,6 +115,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []

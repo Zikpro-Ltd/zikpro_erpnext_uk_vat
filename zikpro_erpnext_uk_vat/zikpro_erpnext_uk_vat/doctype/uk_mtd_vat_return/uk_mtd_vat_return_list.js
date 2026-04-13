@@ -67,6 +67,7 @@ frappe.listview_settings['UK MTD VAT Return'] = {
 };
 
 //actual code starts
+
 frappe.ui.form.on('UK MTD VAT Return', {
     refresh: function(frm) {
         if (frm.doc.docstatus === 0) {
@@ -128,88 +129,88 @@ frappe.ui.form.on('UK MTD VAT Return', {
 
 //actual code ends
 
-/*
-frappe.ui.form.on('UK MTD VAT Return', {
-    refresh: function(frm) {
-        if (frm.doc.docstatus === 0) {
-            // Calculate VAT Boxes button (unchanged)
-            frm.add_custom_button(__('Calculate VAT Boxes'), function() {
-                frappe.call({
-                    method: 'zikpro_erpnext_uk_vat.api.calculate_vat_boxes',
-                    args: { docname: frm.doc.name },
-                    callback: function(r) {
-                        if (!r.exc) {
-                            frappe.show_alert({
-                                message: __('VAT boxes calculated successfully'),
-                                indicator: 'green'
-                            });
-                            frm.refresh();
-                        }
-                    },
-                    freeze: true,
-                    freeze_message: __('Calculating VAT boxes...')
-                });
-            }, __('VAT Return'));
 
-            // Submit to HMRC button - now shows contact popup
-            if (frm.doc.status === "Overdue") {
-                frm.add_custom_button(__('Submit to HMRC'), function() {
-                    // Show custom dialog instead of confirmation
-                    const dialog = new frappe.ui.Dialog({
-                        title: __('Contact Us for Submission'),
-                        size: 'medium',
-                        fields: [
-                            {
-                                fieldtype: 'HTML',
-                                fieldname: 'contact_message',
-                                options: `
-                                    <div style="text-align: center; padding: 20px;">
-                                        <i class="fa fa-envelope-o" style="font-size: 48px; color: #5e64ff; margin-bottom: 20px;"></i>
-                                        <h4 style="margin-bottom: 15px;">${__('VAT Return Submission Service')}</h4>
-                                        <p style="margin-bottom: 20px; color: #666;">
-                                            ${__('To ensure accurate and compliant VAT submissions, please contact our team to assist with your HMRC submission.')}
-                                        </p>
-                                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                                            <p style="margin-bottom: 8px;">
-                                                <i class="fa fa-phone" style="margin-right: 10px; color: #5e64ff;"></i>
-                                                <strong>${__('Phone:')}</strong> <span style="color: #333;">+44 7923 434858</span>
-                                            </p>
-                                            <p style="margin-bottom: 8px;">
-                                                <i class="fa fa-envelope" style="margin-right: 10px; color: #5e64ff;"></i>
-                                                <strong>${__('Email:')}</strong> <span style="color: #333;">info@zikpro.com</span>
-                                            </p>
-                                            <p style="margin-bottom: 0;">
-                                                <i class="fa fa-clock-o" style="margin-right: 10px; color: #5e64ff;"></i>
-                                                <strong>${__('Hours:')}</strong> <span style="color: #333;">Mon-Fri, 9:00 - 17:00</span>
-                                            </p>
-                                        </div>
-                                        <p style="color: #888; font-size: 12px;">
-                                            <i class="fa fa-lock" style="margin-right: 5px;"></i>
-                                            ${__('Our team will verify all calculations and ensure proper submission to HMRC')}
-                                        </p>
-                                    </div>
-                                `
-                            }
-                        ],
-                        primary_action_label: __('Close'),
-                        primary_action: function() {
-                            dialog.hide();
-                        }
-                    });
+// frappe.ui.form.on('UK MTD VAT Return', {
+//     refresh: function(frm) {
+//         if (frm.doc.docstatus === 0) {
+//             // Calculate VAT Boxes button (unchanged)
+//             frm.add_custom_button(__('Calculate VAT Boxes'), function() {
+//                 frappe.call({
+//                     method: 'zikpro_erpnext_uk_vat.api.calculate_vat_boxes',
+//                     args: { docname: frm.doc.name },
+//                     callback: function(r) {
+//                         if (!r.exc) {
+//                             frappe.show_alert({
+//                                 message: __('VAT boxes calculated successfully'),
+//                                 indicator: 'green'
+//                             });
+//                             frm.refresh();
+//                         }
+//                     },
+//                     freeze: true,
+//                     freeze_message: __('Calculating VAT boxes...')
+//                 });
+//             }, __('VAT Return'));
+
+//             // Submit to HMRC button - now shows contact popup
+//             if (frm.doc.status === "Overdue") {
+//                 frm.add_custom_button(__('Submit to HMRC'), function() {
+//                     // Show custom dialog instead of confirmation
+//                     const dialog = new frappe.ui.Dialog({
+//                         title: __('Contact Us for Submission'),
+//                         size: 'medium',
+//                         fields: [
+//                             {
+//                                 fieldtype: 'HTML',
+//                                 fieldname: 'contact_message',
+//                                 options: `
+//                                     <div style="text-align: center; padding: 20px;">
+//                                         <i class="fa fa-envelope-o" style="font-size: 48px; color: #5e64ff; margin-bottom: 20px;"></i>
+//                                         <h4 style="margin-bottom: 15px;">${__('VAT Return Submission Service')}</h4>
+//                                         <p style="margin-bottom: 20px; color: #666;">
+//                                             ${__('To ensure accurate and compliant VAT submissions, please contact our team to assist with your HMRC submission.')}
+//                                         </p>
+//                                         <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+//                                             <p style="margin-bottom: 8px;">
+//                                                 <i class="fa fa-phone" style="margin-right: 10px; color: #5e64ff;"></i>
+//                                                 <strong>${__('Phone:')}</strong> <span style="color: #333;">+44 7923 434858</span>
+//                                             </p>
+//                                             <p style="margin-bottom: 8px;">
+//                                                 <i class="fa fa-envelope" style="margin-right: 10px; color: #5e64ff;"></i>
+//                                                 <strong>${__('Email:')}</strong> <span style="color: #333;">info@zikpro.com</span>
+//                                             </p>
+//                                             <p style="margin-bottom: 0;">
+//                                                 <i class="fa fa-clock-o" style="margin-right: 10px; color: #5e64ff;"></i>
+//                                                 <strong>${__('Hours:')}</strong> <span style="color: #333;">Mon-Fri, 9:00 - 17:00</span>
+//                                             </p>
+//                                         </div>
+//                                         <p style="color: #888; font-size: 12px;">
+//                                             <i class="fa fa-lock" style="margin-right: 5px;"></i>
+//                                             ${__('Our team will verify all calculations and ensure proper submission to HMRC')}
+//                                         </p>
+//                                     </div>
+//                                 `
+//                             }
+//                         ],
+//                         primary_action_label: __('Close'),
+//                         primary_action: function() {
+//                             dialog.hide();
+//                         }
+//                     });
                     
-                    // Add custom close button styling
-                    dialog.set_primary_action(__('Close'), function() {
-                        dialog.hide();
-                    });
+//                     // Add custom close button styling
+//                     dialog.set_primary_action(__('Close'), function() {
+//                         dialog.hide();
+//                     });
                     
-                    dialog.show();
+//                     dialog.show();
                     
-                }, __('VAT Return')).addClass('btn-danger'); // Red button for emphasis
-            }
-        }
-        setup_box_calculations(frm); // Your existing calculation setup
-    }
-}); */
+//                 }, __('VAT Return')).addClass('btn-danger'); // Red button for emphasis
+//             }
+//         }
+//         setup_box_calculations(frm); // Your existing calculation setup
+//     }
+// }); 
 
 
 function setup_box_calculations(frm) {
