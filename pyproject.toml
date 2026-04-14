@@ -1,15 +1,13 @@
 [project]
 name = "zikpro_erpnext_uk_vat"
+version = "0.0.1"
 authors = [
     { name = "Zikpro", email = "info@zikpro.com"}
 ]
 description = "Uk VAT Compliance"
 requires-python = ">=3.10"
 readme = "README.md"
-dynamic = ["version"]
-dependencies = [
-    # "frappe~=15.0.0" # Installed and managed by bench.
-]
+dependencies = []
 
 [build-system]
 requires = ["flit_core >=3.4,<4"]
@@ -17,7 +15,7 @@ build-backend = "flit_core.buildapi"
 
 # These dependencies are only installed when developer mode is enabled
 [tool.bench.dev-dependencies]
-# package_name = "~=1.1.0"
+
 
 [tool.bench.frappe-dependencies]
 frappe = ">=15.0.0 <16.0.0"
