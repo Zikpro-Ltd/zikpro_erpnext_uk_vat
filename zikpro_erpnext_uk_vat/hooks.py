@@ -6,7 +6,8 @@ app_email = "info@zikpro.com"
 app_license = "mit"
 # required_apps = []
 
-app_version = "2.1.3"
+# app_version = "2.1.3"
+app_version = "0.0.1"
 
 # Includes in <head>
 # ------------------
