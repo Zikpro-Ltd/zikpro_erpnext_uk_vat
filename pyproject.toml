@@ -17,4 +17,4 @@ build-backend = "flit_core.buildapi"
 [tool.bench.dev-dependencies]
 
 [tool.bench.frappe-dependencies]
-frappe = ">=15.0.0,<16.0.0-beta"
+frappe = ">=16.0.0-dev,<17.0.0"
